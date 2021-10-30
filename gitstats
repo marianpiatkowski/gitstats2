@@ -123,8 +123,10 @@ def getversion():
     global VERSION
     if VERSION == 0:
         gitstats_repo = os.path.dirname(os.path.abspath(__file__))
-        VERSION = getpipeoutput(["git --git-dir=%s/.git --work-tree=%s rev-parse --short %s" %
-                (gitstats_repo, gitstats_repo, getcommitrange('HEAD').split('\n')[0])])
+        commit_range = getcommitrange('HEAD').split('\n')[0]
+        pipe_in = f"git --git-dir={gitstats_repo}/.git --work-tree={gitstats_repo} \
+        rev-parse --short {commit_range}"
+        VERSION = getpipeoutput([pipe_in])
     return VERSION
 
 def getgitversion():
@@ -305,7 +307,9 @@ class GitDataCollector(DataCollector):
     def collect(self, dir):
         DataCollector.collect(self, dir)
 
-        self.total_authors += int(getpipeoutput(['git shortlog -s %s' % getlogrange(), 'wc -l']))
+        pipe_in = f"git shortlog -s {getlogrange()}"
+        pipe_out = getpipeoutput([pipe_in, 'wc -l'])
+        self.total_authors += int(pipe_out)
         #self.total_lines = int(getoutput('git-ls-files -z |xargs -0 cat |wc -l'))
 
         # tags
@@ -313,10 +317,11 @@ class GitDataCollector(DataCollector):
         for line in lines:
             if not line:
                 continue
-            (hash, tag) = line.split(' ')
+            (hash_value, tag) = line.split(' ')
 
             tag = tag.replace('refs/tags/', '')
-            output = getpipeoutput(['git log "%s" --pretty=format:"%%at %%aN" -n 1' % hash])
+            pipe_in = f"git log \"{hash_value}\" --pretty=format:\"%at %aN\" -n 1"
+            output = getpipeoutput([pipe_in])
             if output:
                 parts = output.split(' ')
                 stamp = 0
@@ -326,7 +331,7 @@ class GitDataCollector(DataCollector):
                     stamp = 0
                 self.tags[tag] = {
                     'stamp': stamp,
-                    'hash' : hash,
+                    'hash' : hash_value,
                     'date' : datetime.datetime.fromtimestamp(stamp).strftime('%Y-%m-%d'),
                     'commits': 0,
                     'authors': {} }
@@ -336,9 +341,10 @@ class GitDataCollector(DataCollector):
         tags_sorted_by_date_desc = [tagname for *_, tagname in sorted(tags_list,reverse=True)]
         prev = None
         for tag in reversed(tags_sorted_by_date_desc):
-            cmd = 'git shortlog -s "%s"' % tag
-            if prev != None:
-                cmd += ' "^%s"' % prev
+            if prev == None:
+                cmd = f"git shortlog -s \"{tag}\""
+            else:
+                cmd = f"git shortlog -s \"{tag}\" \"^{prev}\""
             output = getpipeoutput([cmd])
             if not output:
                 continue
@@ -479,7 +485,7 @@ class GitDataCollector(DataCollector):
                 revs_to_read.append((time,rev))
                 continue
             if rev in list(self.cache['files_in_tree'].keys()):
-                lines.append('%d %d' % (int(time), self.cache['files_in_tree'][rev]))
+                lines.append(f"{int(time)} {self.cache['files_in_tree'][rev]}")
             else:
                 revs_to_read.append((time,rev))
 
@@ -494,7 +500,7 @@ class GitDataCollector(DataCollector):
             if 'files_in_tree' not in self.cache:
                 self.cache['files_in_tree'] = {}
             self.cache['files_in_tree'][rev] = count
-            lines.append('%d %d' % (int(time), count))
+            lines.append(f"{int(time)} {count}")
 
         self.total_commits += len(lines)
         for line in lines:
@@ -505,10 +511,10 @@ class GitDataCollector(DataCollector):
             try:
                 self.files_by_stamp[int(stamp)] = int(files)
             except ValueError:
-                print('Warning: failed to parse line "%s"' % line)
+                print(f"Warning: failed to parse line \"{line}\"")
 
         # extensions and size of files
-        pipe_in = f"git ls-tree -r -l -z {getcommitrange('HEAD', end_only = True)}"
+        pipe_in = f"git ls-tree -r -l -z {getcommitrange('HEAD', end_only=True)}"
         pipe_out = getpipeoutput([pipe_in])
         lines = pipe_out.split('\000')
         blobs_to_read = []
@@ -601,9 +607,9 @@ class GitDataCollector(DataCollector):
 
                         files, inserted, deleted = 0, 0, 0
                     except ValueError:
-                        print('Warning: unexpected line "%s"' % line)
+                        print(f"Warning: unexpected line \"{line}\"")
                 else:
-                    print('Warning: unexpected line "%s"' % line)
+                    print(f"Warning: unexpected line \"{line}\"")
             else:
                 numbers = getstatsummarycounts(line)
 
@@ -615,7 +621,7 @@ class GitDataCollector(DataCollector):
                     self.total_lines_removed += deleted
 
                 else:
-                    print('Warning: failed to handle line "%s"' % line)
+                    print(f"Warning: failed to handle line \"{line}\"")
                     (files, inserted, deleted) = (0, 0, 0)
                     # self.changes_by_date[stamp] = { 'files': files, 'ins': inserted, 'del': deleted }
         self.total_lines += total_lines
@@ -663,16 +669,16 @@ class GitDataCollector(DataCollector):
                         self.changes_by_date_by_author[stamp][author]['commits'] = self.authors[author]['commits']
                         files, inserted, deleted = 0, 0, 0
                     except ValueError:
-                        print('Warning: unexpected line "%s"' % line)
+                        print(f"Warning: unexpected line \"{line}\"")
                 else:
-                    print('Warning: unexpected line "%s"' % line)
+                    print(f"Warning: unexpected line \"{line}\"")
             else:
                 numbers = getstatsummarycounts(line)
 
                 if len(numbers) == 3:
                     (files, inserted, deleted) = [int(el) for el in numbers]
                 else:
-                    print('Warning: failed to handle line "%s"' % line)
+                    print(f"Warning: failed to handle line \"{line}\"")
                     (files, inserted, deleted) = (0, 0, 0)
 
     def refine(self):
@@ -752,7 +758,7 @@ class GitDataCollector(DataCollector):
         return self.total_size
 
     def revToDate(self, rev):
-        stamp = int(getpipeoutput(['git log --pretty=format:%%at "%s" -n 1' % rev]))
+        stamp = int(getpipeoutput([f"git log --pretty=format:%at \"{rev}\" -n 1"]))
         return datetime.datetime.fromtimestamp(stamp).strftime('%Y-%m-%d')
 
 class ReportCreator:
@@ -769,7 +775,7 @@ def html_linkify(text):
 
 def html_header(level, text):
     name = html_linkify(text)
-    return '\n<h%d id="%s"><a href="#%s">%s</a></h%d>\n\n' % (level, name, name, text, level)
+    return f"\n<h{level} id=\"{name}\"><a href=\"#{name}\">{text}</a></h{level}>\n\n"
 
 class HTMLReportCreator(ReportCreator):
     def create(self, data, path):
@@ -792,7 +798,7 @@ class HTMLReportCreator(ReportCreator):
                 print(f"Warning: \"{local_file}\" not found, so not copied (searched: {basedirs})")
 
         f = open(path + "/index.html", 'w')
-        format = '%Y-%m-%d %H:%M:%S'
+        datetime_format = '%Y-%m-%d %H:%M:%S'
         self.printHeader(f)
 
         f.write('<h1>GitStats - %s</h1>' % data.projectname)
@@ -801,9 +807,9 @@ class HTMLReportCreator(ReportCreator):
 
         f.write('<dl>')
         f.write('<dt>Project name</dt><dd>%s</dd>' % (data.projectname))
-        f.write('<dt>Generated</dt><dd>%s (in %d seconds)</dd>' % (datetime.datetime.now().strftime(format), time.time() - data.getStampCreated()))
+        f.write('<dt>Generated</dt><dd>%s (in %d seconds)</dd>' % (datetime.datetime.now().strftime(datetime_format), time.time() - data.getStampCreated()))
         f.write('<dt>Generator</dt><dd><a href="http://gitstats.sourceforge.net/">GitStats</a> (version %s), %s, %s</dd>' % (getversion(), getgitversion(), getgnuplotversion()))
-        f.write('<dt>Report Period</dt><dd>%s to %s</dd>' % (data.getFirstCommitDate().strftime(format), data.getLastCommitDate().strftime(format)))
+        f.write('<dt>Report Period</dt><dd>%s to %s</dd>' % (data.getFirstCommitDate().strftime(datetime_format), data.getLastCommitDate().strftime(datetime_format)))
         f.write('<dt>Age</dt><dd>%d days, %d active days (%3.2f%%)</dd>' % (data.getCommitDeltaDays(), len(data.getActiveDays()), (100.0 * len(data.getActiveDays()) / data.getCommitDeltaDays())))
         f.write('<dt>Total Files</dt><dd>%s</dd>' % data.getTotalFiles())
         f.write('<dt>Total Lines of Code</dt><dd>%s (%d added, %d removed)</dd>' % (data.getTotalLOC(), data.total_lines_added, data.total_lines_removed))
@@ -1467,7 +1473,7 @@ class GitStats:
             if o == '-c':
                 key, value = v.split('=', 1)
                 if key not in conf:
-                    raise KeyError('no such key "%s" in config' % key)
+                    raise KeyError(f"no such key \"{key}\" in config")
                 if isinstance(conf[key], int):
                     conf[key] = int(value)
                 else:
@@ -1495,14 +1501,14 @@ class GitStats:
             print('gnuplot not found')
             sys.exit(1)
 
-        print('Output path: %s' % outputpath)
+        print(f"Output path: {outputpath}")
         cachefile = os.path.join(outputpath, 'gitstats.cache')
 
         data = GitDataCollector()
         data.loadCache(cachefile)
 
         for gitpath in args[0:-1]:
-            print('Git path: %s' % gitpath)
+            print(f"Git path: {gitpath}")
 
             prevdir = os.getcwd()
             os.chdir(gitpath)
@@ -1524,13 +1530,15 @@ class GitStats:
 
         time_end = time.time()
         EXECTIME_INTERNAL = time_end - time_start
-        print('Execution time %.5f secs, %.5f secs (%.2f %%) in external commands)' % (EXECTIME_INTERNAL, EXECTIME_EXTERNAL, (100.0 * EXECTIME_EXTERNAL) / EXECTIME_INTERNAL))
+        print(f"Execution time {EXECTIME_INTERNAL:.5f} secs, {EXECTIME_EXTERNAL:.5f} secs \
+({(100.0*EXECTIME_EXTERNAL/EXECTIME_INTERNAL):.2f} %) in external commands")
         if sys.stdin.isatty():
+            index_html = os.path.join(outputpath, 'index.html').replace("'", "'\\''")
             print('You may now run:')
             print()
-            print('   sensible-browser \'%s\'' % os.path.join(outputpath, 'index.html').replace("'", "'\\''"))
+            print(f"   sensible-browser '{index_html}'")
             print()
 
-if __name__=='__main__':
+if __name__ == '__main__':
     g = GitStats()
     g.run(sys.argv[1:])
