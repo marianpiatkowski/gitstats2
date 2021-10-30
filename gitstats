@@ -4,6 +4,8 @@
 # Copyright (c) 2007-2014 Heikki Hokkanen <hoxu@users.sf.net> & others (see doc/AUTHOR)
 # Copyright (C) 2021- Marian Piatkowski <marianpiatkowski@web.de>
 # GPLv2 / GPLv3
+
+from multiprocessing import Pool
 import datetime
 import getopt
 import glob
@@ -21,23 +23,21 @@ if sys.version_info < (3, 6):
     print("Python 3.6 or higher is required for gitstats", file=sys.stderr)
     sys.exit(1)
 
-from multiprocessing import Pool
-
 os.environ['LC_ALL'] = 'C'
 
 GNUPLOT_COMMON = 'set terminal png transparent size 640,240\nset size 1.0,1.0\n'
 ON_LINUX = (platform.system() == 'Linux')
 WEEKDAYS = ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')
 
-exectime_internal = 0.0
-exectime_external = 0.0
+EXECTIME_INTERNAL = 0.0
+EXECTIME_EXTERNAL = 0.0
 time_start = time.time()
 
 # By default, gnuplot is searched from path, but can be overridden with the
 # environment variable "GNUPLOT"
-gnuplot_cmd = 'gnuplot'
+GNUPLOT_CMD = 'gnuplot'
 if 'GNUPLOT' in os.environ:
-    gnuplot_cmd = os.environ['GNUPLOT']
+    GNUPLOT_CMD = os.environ['GNUPLOT']
 
 conf = {
     'max_domains': 10,
@@ -54,34 +54,34 @@ conf = {
 }
 
 def getpipeoutput(cmds, quiet = False):
-    global exectime_external
+    global EXECTIME_EXTERNAL
     start = time.time()
     if not quiet and ON_LINUX and os.isatty(1):
         print('>> ' + ' | '.join(cmds), end=' ')
         sys.stdout.flush()
-    p = subprocess.Popen(
+    process = subprocess.Popen(
         cmds[0],
         stdout = subprocess.PIPE,
         shell = True,
         encoding = 'utf8')
-    processes=[p]
-    for x in cmds[1:]:
-        p = subprocess.Popen(
-            x,
-            stdin = p.stdout,
+    processes=[process]
+    for command in cmds[1:]:
+        process = subprocess.Popen(
+            command,
+            stdin = process.stdout,
             stdout = subprocess.PIPE,
             shell = True,
             encoding = 'utf8')
-        processes.append(p)
-    output = p.communicate()[0]
-    for p in processes:
-        p.wait()
+        processes.append(process)
+    output = process.communicate()[0]
+    for process in processes:
+        process.wait()
     end = time.time()
     if not quiet:
         if ON_LINUX and os.isatty(1):
             print('\r', end=' ')
         print(f"[{(end-start):.5f}] >> {' | '.join(cmds)}")
-    exectime_external += (end - start)
+    EXECTIME_EXTERNAL += (end - start)
     return output.rstrip('\n')
 
 def getlogrange(defaultrange = 'HEAD', end_only = True):
@@ -131,16 +131,16 @@ def getgitversion():
     return getpipeoutput(['git --version']).split('\n')[0]
 
 def getgnuplotversion():
-    return getpipeoutput([f"{gnuplot_cmd} --version"]).split('\n')[0]
+    return getpipeoutput([f"{GNUPLOT_CMD} --version"]).split('\n')[0]
 
 def getnumoffilesfromrev(time_rev):
     """
     Get number of files changed in commit
     """
-    time, rev = time_rev
+    timestamp, rev = time_rev
     pipe_out = getpipeoutput([f"git ls-tree -r --name-only \"{rev}\"", 'wc -l'])
-    num_files = int(pipe_out.split('\n')[0])
-    return (int(time), rev, num_files)
+    num_files = int(pipe_out.split('\n', maxsplit=1)[0])
+    return (int(timestamp), rev, num_files)
 
 def getnumoflinesinblob(ext_blob):
     """
@@ -230,7 +230,7 @@ class DataCollector:
         f = open(cachefile, 'rb')
         try:
             self.cache = pickle.loads(zlib.decompress(f.read()))
-        except:
+        except Exception:
             # temporary hack to upgrade non-compressed caches
             f.seek(0)
             self.cache = pickle.load(f)
@@ -243,7 +243,7 @@ class DataCollector:
 
     ##
     # : get a dictionary of author
-    def getAuthorInfo(self, author):
+    def getAuthorInfo(self, _author):
         return None
 
     def getActivityByDayOfWeek(self):
@@ -253,7 +253,7 @@ class DataCollector:
         return {}
 
     # : get a dictionary of domains
-    def getDomainInfo(self, domain):
+    def getDomainInfo(self, _domain):
         return None
 
     ##
@@ -1414,7 +1414,7 @@ plot """
         os.chdir(path)
         files = glob.glob(path + '/*.plot')
         for f in files:
-            out = getpipeoutput([gnuplot_cmd + ' "%s"' % f])
+            out = getpipeoutput([GNUPLOT_CMD + ' "%s"' % f])
             if out:
                 print(out)
 
@@ -1523,8 +1523,8 @@ class GitStats:
         report.create(data, outputpath)
 
         time_end = time.time()
-        exectime_internal = time_end - time_start
-        print('Execution time %.5f secs, %.5f secs (%.2f %%) in external commands)' % (exectime_internal, exectime_external, (100.0 * exectime_external) / exectime_internal))
+        EXECTIME_INTERNAL = time_end - time_start
+        print('Execution time %.5f secs, %.5f secs (%.2f %%) in external commands)' % (EXECTIME_INTERNAL, EXECTIME_EXTERNAL, (100.0 * EXECTIME_EXTERNAL) / EXECTIME_INTERNAL))
         if sys.stdin.isatty():
             print('You may now run:')
             print()
