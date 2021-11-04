@@ -1,5 +1,6 @@
 # -*- python-indent-offset: 4 -*-
 import sys
+import time
 import getopt
 import os
 import subprocess
@@ -8,6 +9,7 @@ from gitstats2_collect_data import GitStatisticsData
 from gitstats2_generate_markdown import RMarkdownFile
 
 def main(args_orig) :
+    time_start = time.time()
     conf = {
         'max_domains': 10,
         'max_ext_length': 10,
@@ -71,6 +73,12 @@ Please see the manual page for more details.""")
         f"Rscript -e \"rmarkdown::render('{gitstats2_markdown.filename}')\"",
         shell=True,
         check=True)
+
+    time_end = time.time()
+    exectime_total = time_end - time_start
+    exectime_commands = git_statistics.get_exectime_commands()
+    print(f"Execution time {exectime_total:.5f} secs, {exectime_commands:.5f} secs \
+({(100.0*exectime_commands/exectime_total):.2f} %) in external commands")
 
 if __name__ == '__main__' :
     main(sys.argv[1:])

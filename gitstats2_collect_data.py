@@ -21,33 +21,55 @@ class GitStatisticsData :
         self.total_lines_removed = 0
         self.total_commits = 0
         self.total_authors = 0
+        self.exectime_commands = float(0.0)
 
     def _concat_project_name(self) :
         git_repo_names = \
             list(map(lambda el : os.path.basename(os.path.abspath(el)), self._gitpaths))
         self.configuration['project_name'] = ', '.join(git_repo_names)
 
+    def _get_pipe_output(self, cmds, quiet=False) :
+        start = time.time()
+        if not quiet and os.isatty(1) :
+            print('>> ' + ' | '.join(cmds), end=' ')
+            sys.stdout.flush()
+        process = subprocess.Popen(
+            cmds[0],
+            stdout = subprocess.PIPE,
+            shell = True,
+            encoding = 'utf8')
+        processes=[process]
+        for command in cmds[1:] :
+            process = subprocess.Popen(
+                command,
+                stdin = process.stdout,
+                stdout = subprocess.PIPE,
+                shell = True,
+                encoding = 'utf8')
+            processes.append(process)
+        output = process.communicate()[0]
+        for process in processes:
+            process.wait()
+        end = time.time()
+        if not quiet :
+            if os.isatty(1) :
+                print('\r', end=' ')
+            print(f"[{(end-start):.5f}] >> {' | '.join(cmds)}")
+        self.exectime_commands += (end - start)
+        return output.rstrip('\n')
+
     def get_runstart_stamp(self) :
         return self.runstart_stamp
 
     def get_gitstats2_version(self) :
         gitstats_repo = os.path.dirname(os.path.abspath(__file__))
-        process = subprocess.Popen(
-            f"git --git-dir={gitstats_repo}/.git --work-tree={gitstats_repo} rev-parse --short @",
-            stdout=subprocess.PIPE,
-            shell=True,
-            encoding='utf8')
-        output = process.communicate()[0]
-        return output.rstrip('\n')
+        commit_range = '@'
+        cmd = f"git --git-dir={gitstats_repo}/.git --work-tree={gitstats_repo} \
+        rev-parse --short {commit_range}",
+        return self._get_pipe_output([cmd])
 
     def get_git_version(self) :
-        process = subprocess.Popen(
-            "git --version",
-            stdout=subprocess.PIPE,
-            shell=True,
-            encoding='utf8')
-        output = process.communicate()[0]
-        return output.rstrip('\n')
+        return self._get_pipe_output(['git --version'])
 
     def get_first_commit_date(self) :
         return datetime.datetime.fromtimestamp(self.first_commit_stamp)
@@ -79,14 +101,19 @@ class GitStatisticsData :
     def get_total_authors(self) :
         return self.total_authors
 
+    def get_exectime_commands(self) :
+        return self.exectime_commands
+
     def collect(self) :
         self.runstart_stamp = time.time()
+        self.exectime_commands = 0.0
         if not self.configuration['project_name'] :
             self._concat_project_name()
         for gitpath in self._gitpaths :
             print(f"Git path: {gitpath}")
 
 def main(args_orig) :
+    time_start = time.time()
     conf = {
         'max_domains': 10,
         'max_ext_length': 10,
@@ -142,6 +169,12 @@ Please see the manual page for more details.""")
 
     git_statistics = GitStatisticsData(conf, gitpaths, outputpath)
     git_statistics.collect()
+
+    time_end = time.time()
+    exectime_total = time_end - time_start
+    exectime_commands = git_statistics.get_exectime_commands()
+    print(f"Execution time {exectime_total:.5f} secs, {exectime_commands:.5f} secs \
+({(100.0*exectime_commands/exectime_total):.2f} %) in external commands")
 
 if __name__ == '__main__' :
     main(sys.argv[1:])
