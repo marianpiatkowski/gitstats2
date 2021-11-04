@@ -58,6 +58,19 @@ class GitStatisticsData :
         self.exectime_commands += (end - start)
         return output.rstrip('\n')
 
+    def _get_log_range(self, default_range='HEAD', end_only=True) :
+        commit_range = self._get_commit_range(default_range, end_only)
+        if self.configuration['start_date'] :
+            return f"--since=\"{self.configuration['start_date']}\" \"{commit_range}\""
+        return commit_range
+
+    def _get_commit_range(self, default_range='HEAD', end_only=True) :
+        if self.configuration['commit_end'] :
+            if end_only or not self.configuration['commit_begin'] :
+                return self.configuration['commit_end']
+            return f"{self.configuration['commit_begin']}..{self.configuration['commit_end']}"
+        return default_range
+
     def get_runstart_stamp(self) :
         return self.runstart_stamp
 
@@ -65,7 +78,7 @@ class GitStatisticsData :
         gitstats_repo = os.path.dirname(os.path.abspath(__file__))
         commit_range = '@'
         cmd = f"git --git-dir={gitstats_repo}/.git --work-tree={gitstats_repo} \
-        rev-parse --short {commit_range}",
+rev-parse --short {commit_range}"
         return self._get_pipe_output([cmd])
 
     def get_git_version(self) :
