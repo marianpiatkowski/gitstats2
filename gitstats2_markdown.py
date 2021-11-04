@@ -21,7 +21,7 @@ $generation_date (in $generation_duration seconds)
 
 #### Generator:
 
-[GitStats2](https://github.com/marianpiatkowski/gitstats2) (version $commit_sha), git version $git_version, pandas version $pandas_version, matplotlib version $matplotlib_version, R version $R_version
+[GitStats2](https://github.com/marianpiatkowski/gitstats2) (version $commit_sha), $git_version, pandas version $pandas_version, matplotlib version $matplotlib_version, R version `r getRversion()`
 
 #### Report Period:
 

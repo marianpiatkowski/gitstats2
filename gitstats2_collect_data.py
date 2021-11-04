@@ -2,14 +2,87 @@
 import sys
 import getopt
 import os
+import subprocess
+import time
+import datetime
 
 class GitStatisticsData :
     def __init__(self, conf, gitpaths, outputpath) :
-        self.configuration = conf
+        self.configuration = conf.copy()
         self._gitpaths = gitpaths
         self._outputpath = outputpath
+        self.runstart_stamp = float(0.0)
+        self.first_commit_stamp = 0
+        self.last_commit_stamp = 0
+        self.active_days = set()
+        self.total_files = 0
+        self.total_lines = 0
+        self.total_lines_added = 0
+        self.total_lines_removed = 0
+        self.total_commits = 0
+        self.total_authors = 0
+
+    def _concat_project_name(self) :
+        git_repo_names = \
+            list(map(lambda el : os.path.basename(os.path.abspath(el)), self._gitpaths))
+        self.configuration['project_name'] = ', '.join(git_repo_names)
+
+    def get_runstart_stamp(self) :
+        return self.runstart_stamp
+
+    def get_gitstats2_version(self) :
+        gitstats_repo = os.path.dirname(os.path.abspath(__file__))
+        process = subprocess.Popen(
+            f"git --git-dir={gitstats_repo}/.git --work-tree={gitstats_repo} rev-parse --short @",
+            stdout=subprocess.PIPE,
+            shell=True,
+            encoding='utf8')
+        output = process.communicate()[0]
+        return output.rstrip('\n')
+
+    def get_git_version(self) :
+        process = subprocess.Popen(
+            "git --version",
+            stdout=subprocess.PIPE,
+            shell=True,
+            encoding='utf8')
+        output = process.communicate()[0]
+        return output.rstrip('\n')
+
+    def get_first_commit_date(self) :
+        return datetime.datetime.fromtimestamp(self.first_commit_stamp)
+
+    def get_last_commit_date(self) :
+        return datetime.datetime.fromtimestamp(self.last_commit_stamp)
+
+    def get_commit_delta_days(self) :
+        return (self.last_commit_stamp / 86400 - self.first_commit_stamp / 86400) + 1
+
+    def get_active_days(self) :
+        return self.active_days
+
+    def get_total_files(self) :
+        return self.total_files
+
+    def get_total_lines_of_code(self) :
+        return self.total_lines
+
+    def get_total_lines_added(self) :
+        return self.total_lines_added
+
+    def get_total_lines_removed(self) :
+        return self.total_lines_removed
+
+    def get_total_commits(self) :
+        return self.total_commits
+
+    def get_total_authors(self) :
+        return self.total_authors
 
     def collect(self) :
+        self.runstart_stamp = time.time()
+        if not self.configuration['project_name'] :
+            self._concat_project_name()
         for gitpath in self._gitpaths :
             print(f"Git path: {gitpath}")
 
