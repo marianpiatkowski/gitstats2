@@ -98,6 +98,7 @@ rev-parse --short {commit_range}"
             prev_dir = os.getcwd()
             os.chdir(gitpath)
             print('Collecting data...')
+            self._collect_authors()
             self._collect_tags()
             self._collect_revlist()
             os.chdir(prev_dir)
@@ -150,6 +151,11 @@ rev-parse --short {commit_range}"
             return f"{self.configuration['commit_begin']}..{self.configuration['commit_end']}"
         return default_range
 
+    def _collect_authors(self) :
+        cmd = f"git shortlog -s {self._get_log_range()}"
+        pipe_out = self._get_pipe_output([cmd, 'wc -l'])
+        self.total_authors += int(pipe_out)
+
     def _collect_tags(self) :
         lines = self._get_pipe_output(['git show-ref --tags']).split('\n')
         tags = {}
@@ -201,6 +207,7 @@ rev-parse --short {commit_range}"
         cmd = f"git rev-list --pretty=format:\"%at %ai %aN <%aE>\" {self._get_log_range('HEAD')}"
         pipe_out = self._get_pipe_output([cmd, 'grep -v ^commit'])
         lines = pipe_out.split('\n')
+        self.total_commits += len(lines)
         for line in lines :
             parts = line.split(' ', 4)
             author = ''
