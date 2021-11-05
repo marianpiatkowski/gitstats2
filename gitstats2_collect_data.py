@@ -5,6 +5,7 @@ import os
 import subprocess
 import time
 import datetime
+import re
 
 class GitStatisticsData :
     def __init__(self, conf, gitpaths, outputpath) :
@@ -22,54 +23,7 @@ class GitStatisticsData :
         self.total_commits = 0
         self.total_authors = 0
         self.exectime_commands = float(0.0)
-
-    def _concat_project_name(self) :
-        git_repo_names = \
-            list(map(lambda el : os.path.basename(os.path.abspath(el)), self._gitpaths))
-        self.configuration['project_name'] = ', '.join(git_repo_names)
-
-    def _get_pipe_output(self, cmds, quiet=False) :
-        start = time.time()
-        if not quiet and os.isatty(1) :
-            print('>> ' + ' | '.join(cmds), end=' ')
-            sys.stdout.flush()
-        process = subprocess.Popen(
-            cmds[0],
-            stdout = subprocess.PIPE,
-            shell = True,
-            encoding = 'utf8')
-        processes=[process]
-        for command in cmds[1:] :
-            process = subprocess.Popen(
-                command,
-                stdin = process.stdout,
-                stdout = subprocess.PIPE,
-                shell = True,
-                encoding = 'utf8')
-            processes.append(process)
-        output = process.communicate()[0]
-        for process in processes:
-            process.wait()
-        end = time.time()
-        if not quiet :
-            if os.isatty(1) :
-                print('\r', end=' ')
-            print(f"[{(end-start):.5f}] >> {' | '.join(cmds)}")
-        self.exectime_commands += (end - start)
-        return output.rstrip('\n')
-
-    def _get_log_range(self, default_range='HEAD', end_only=True) :
-        commit_range = self._get_commit_range(default_range, end_only)
-        if self.configuration['start_date'] :
-            return f"--since=\"{self.configuration['start_date']}\" \"{commit_range}\""
-        return commit_range
-
-    def _get_commit_range(self, default_range='HEAD', end_only=True) :
-        if self.configuration['commit_end'] :
-            if end_only or not self.configuration['commit_begin'] :
-                return self.configuration['commit_end']
-            return f"{self.configuration['commit_begin']}..{self.configuration['commit_end']}"
-        return default_range
+        self.tags = {}
 
     def get_runstart_stamp(self) :
         return self.runstart_stamp
@@ -124,6 +78,103 @@ rev-parse --short {commit_range}"
             self._concat_project_name()
         for gitpath in self._gitpaths :
             print(f"Git path: {gitpath}")
+            prev_dir = os.getcwd()
+            os.chdir(gitpath)
+            print('Collecting data...')
+            self._collect_tags()
+            os.chdir(prev_dir)
+
+    def _concat_project_name(self) :
+        git_repo_names = \
+            list(map(lambda el : os.path.basename(os.path.abspath(el)), self._gitpaths))
+        self.configuration['project_name'] = ', '.join(git_repo_names)
+
+    def _get_pipe_output(self, cmds, quiet=False) :
+        start = time.time()
+        if not quiet and os.isatty(1) :
+            print('>> ' + ' | '.join(cmds), end=' ')
+            sys.stdout.flush()
+        process = subprocess.Popen(
+            cmds[0],
+            stdout = subprocess.PIPE,
+            shell = True,
+            encoding = 'utf8')
+        processes=[process]
+        for command in cmds[1:] :
+            process = subprocess.Popen(
+                command,
+                stdin = process.stdout,
+                stdout = subprocess.PIPE,
+                shell = True,
+                encoding = 'utf8')
+            processes.append(process)
+        output = process.communicate()[0]
+        for process in processes:
+            process.wait()
+        end = time.time()
+        if not quiet :
+            if os.isatty(1) :
+                print('\r', end=' ')
+            print(f"[{(end-start):.5f}] >> {' | '.join(cmds)}")
+        self.exectime_commands += (end - start)
+        return output.rstrip('\n')
+
+    def _get_log_range(self, default_range='HEAD', end_only=True) :
+        commit_range = self._get_commit_range(default_range, end_only)
+        if self.configuration['start_date'] :
+            return f"--since=\"{self.configuration['start_date']}\" \"{commit_range}\""
+        return commit_range
+
+    def _get_commit_range(self, default_range='HEAD', end_only=True) :
+        if self.configuration['commit_end'] :
+            if end_only or not self.configuration['commit_begin'] :
+                return self.configuration['commit_end']
+            return f"{self.configuration['commit_begin']}..{self.configuration['commit_end']}"
+        return default_range
+
+    def _collect_tags(self) :
+        lines = self._get_pipe_output(['git show-ref --tags']).split('\n')
+        for line in lines :
+            if not line :
+                continue
+            (hash_value, tag) = line.split(' ')
+            tag = tag.replace('refs/tags/', '')
+            cmd = f"git log \"{hash_value}\" --pretty=format:\"%at %aN\" -n 1"
+            output = self._get_pipe_output([cmd])
+            if output :
+                parts = output.split(' ')
+                stamp = 0
+                try :
+                    stamp = int(parts[0])
+                except ValueError :
+                    stamp = 0
+                self.tags[tag] = {
+                    'stamp': stamp,
+                    'hash' : hash_value,
+                    'date' : datetime.datetime.fromtimestamp(stamp).strftime('%Y-%m-%d'),
+                    'commits': 0,
+                    'authors': {} }
+        self._collect_tags_info()
+
+    def _collect_tags_info(self) :
+        tags_list = [(tagdetail['date'], tagname) for tagname, tagdetail in self.tags.items()]
+        tags_sorted_by_date_desc = [tagname for *_, tagname in sorted(tags_list,reverse=True)]
+        prev = None
+        for tag in reversed(tags_sorted_by_date_desc):
+            if prev is None:
+                cmd = f"git shortlog -s \"{tag}\""
+            else:
+                cmd = f"git shortlog -s \"{tag}\" \"^{prev}\""
+            output = self._get_pipe_output([cmd])
+            if not output:
+                continue
+            prev = tag
+            for line in output.split('\n'):
+                parts = re.split(r'\s+', line, 2)
+                commits = int(parts[1])
+                author = parts[2]
+                self.tags[tag]['commits'] += commits
+                self.tags[tag]['authors'][author] = commits
 
 def main(args_orig) :
     time_start = time.time()
