@@ -24,6 +24,23 @@ class GitStatisticsData :
         self.total_authors = 0
         self.exectime_commands = float(0.0)
         self.tags = {}
+        self.domains = {}
+        self.activity_by_hour_of_day = {}
+        self.activity_by_hour_of_day_busiest = 0
+        self.activity_by_day_of_week = {}
+        self.activity_by_hour_of_week = {}
+        self.activity_by_hour_of_week_busiest = 0
+        self.activity_by_month_of_year = {}
+        self.activity_by_year_week = {}
+        self.activity_by_year_week_peak = 0
+        self.authors = {}
+        self.author_of_month = {}
+        self.commits_by_month = {}
+        self.author_of_year = {}
+        self.commits_by_year = {}
+        self.last_active_day = None
+        self.active_days = set()
+        self.commits_by_timezone = {}
 
     def get_runstart_stamp(self) :
         return self.runstart_stamp
@@ -45,7 +62,7 @@ rev-parse --short {commit_range}"
         return datetime.datetime.fromtimestamp(self.last_commit_stamp)
 
     def get_commit_delta_days(self) :
-        return (self.last_commit_stamp / 86400 - self.first_commit_stamp / 86400) + 1
+        return (self.last_commit_stamp // 86400 - self.first_commit_stamp // 86400) + 1
 
     def get_active_days(self) :
         return self.active_days
@@ -82,6 +99,7 @@ rev-parse --short {commit_range}"
             os.chdir(gitpath)
             print('Collecting data...')
             self._collect_tags()
+            self._collect_revlist()
             os.chdir(prev_dir)
 
     def _concat_project_name(self) :
@@ -134,6 +152,7 @@ rev-parse --short {commit_range}"
 
     def _collect_tags(self) :
         lines = self._get_pipe_output(['git show-ref --tags']).split('\n')
+        tags = {}
         for line in lines :
             if not line :
                 continue
@@ -148,16 +167,17 @@ rev-parse --short {commit_range}"
                     stamp = int(parts[0])
                 except ValueError :
                     stamp = 0
-                self.tags[tag] = {
+                tags[tag] = {
                     'stamp': stamp,
                     'hash' : hash_value,
                     'date' : datetime.datetime.fromtimestamp(stamp).strftime('%Y-%m-%d'),
                     'commits': 0,
                     'authors': {} }
-        self._collect_tags_info()
+        self._update_tags_info(tags)
 
-    def _collect_tags_info(self) :
-        tags_list = [(tagdetail['date'], tagname) for tagname, tagdetail in self.tags.items()]
+    def _update_tags_info(self, tags) :
+        self.tags.update(tags)
+        tags_list = [(tagdetail['date'], tagname) for tagname, tagdetail in tags.items()]
         tags_sorted_by_date_desc = [tagname for *_, tagname in sorted(tags_list,reverse=True)]
         prev = None
         for tag in reversed(tags_sorted_by_date_desc):
@@ -175,6 +195,121 @@ rev-parse --short {commit_range}"
                 author = parts[2]
                 self.tags[tag]['commits'] += commits
                 self.tags[tag]['authors'][author] = commits
+
+    def _collect_revlist(self) :
+        # Outputs "<stamp> <date> <time> <timezone> <author> '<' <mail> '>'"
+        cmd = f"git rev-list --pretty=format:\"%at %ai %aN <%aE>\" {self._get_log_range('HEAD')}"
+        pipe_out = self._get_pipe_output([cmd, 'grep -v ^commit'])
+        lines = pipe_out.split('\n')
+        for line in lines :
+            parts = line.split(' ', 4)
+            author = ''
+            try :
+                stamp = int(parts[0])
+            except ValueError :
+                stamp = 0
+            timezone = parts[3]
+            author, mail = parts[4].split('<', 1)
+            author = author.rstrip()
+            mail = mail.rstrip('>')
+            domain = '?'
+            if mail.find('@') != -1 :
+                domain = mail.rsplit('@', 1)[1]
+            date = datetime.datetime.fromtimestamp(float(stamp))
+
+            self._update_extremal_commit_stamps(stamp)
+            self._update_mail_domains(domain)
+            self._update_activity(date)
+            self._update_author_stats(author, stamp)
+            self._update_author_activity(author, date)
+            self._update_commits_by_month(author, date)
+            self._update_commits_by_year(author, date)
+            self._update_active_days(date)
+            self._update_timezones(timezone)
+
+    def _update_extremal_commit_stamps(self, stamp) :
+        if stamp > self.last_commit_stamp :
+            self.last_commit_stamp = stamp
+        if self.first_commit_stamp == 0 or stamp < self.first_commit_stamp :
+            self.first_commit_stamp = stamp
+
+    def _update_mail_domains(self, domain) :
+        if domain not in self.domains :
+            self.domains[domain] = {}
+        self.domains[domain]['commits'] = self.domains[domain].get('commits', 0) + 1
+
+    def _update_activity(self, date) :
+        hour = date.hour
+        self.activity_by_hour_of_day[hour] = self.activity_by_hour_of_day.get(hour, 0) + 1
+        if self.activity_by_hour_of_day[hour] > self.activity_by_hour_of_day_busiest :
+            self.activity_by_hour_of_day_busiest = self.activity_by_hour_of_day[hour]
+
+        day = date.weekday()
+        self.activity_by_day_of_week[day] = self.activity_by_day_of_week.get(day, 0) + 1
+        if day not in self.activity_by_hour_of_week :
+            self.activity_by_hour_of_week[day] = {}
+        self.activity_by_hour_of_week[day][hour] = \
+            self.activity_by_hour_of_week[day].get(hour, 0) + 1
+        if self.activity_by_hour_of_week[day][hour] > self.activity_by_hour_of_week_busiest :
+            self.activity_by_hour_of_week_busiest = self.activity_by_hour_of_week[day][hour]
+
+        month = date.month
+        self.activity_by_month_of_year[month] = self.activity_by_month_of_year.get(month, 0) + 1
+
+        yyw = date.strftime('%Y-%W')
+        self.activity_by_year_week[yyw] = self.activity_by_year_week.get(yyw, 0) + 1
+        if self.activity_by_year_week_peak < self.activity_by_year_week[yyw] :
+            self.activity_by_year_week_peak = self.activity_by_year_week[yyw]
+
+    def _update_author_stats(self, author, stamp) :
+        if author not in self.authors :
+            self.authors[author] = {}
+        # commits, note again that commits may be in any date order
+        # because of cherry-picking and patches
+        if 'last_commit_stamp' not in self.authors[author] :
+            self.authors[author]['last_commit_stamp'] = stamp
+        if stamp > self.authors[author]['last_commit_stamp'] :
+            self.authors[author]['last_commit_stamp'] = stamp
+        if 'first_commit_stamp' not in self.authors[author] :
+            self.authors[author]['first_commit_stamp'] = stamp
+        if stamp < self.authors[author]['first_commit_stamp'] :
+            self.authors[author]['first_commit_stamp'] = stamp
+
+    def _update_author_activity(self, author, date) :
+        yymmdd = date.strftime('%Y-%m-%d')
+        if 'last_active_day' not in self.authors[author] :
+            self.authors[author]['last_active_day'] = yymmdd
+            self.authors[author]['active_days'] = set([yymmdd])
+        elif yymmdd != self.authors[author]['last_active_day'] :
+            self.authors[author]['last_active_day'] = yymmdd
+            self.authors[author]['active_days'].add(yymmdd)
+
+    def _update_commits_by_month(self, author, date) :
+        yymm = date.strftime('%Y-%m')
+        if yymm in self.author_of_month :
+            self.author_of_month[yymm][author] = self.author_of_month[yymm].get(author, 0) + 1
+        else :
+            self.author_of_month[yymm] = {}
+            self.author_of_month[yymm][author] = 1
+        self.commits_by_month[yymm] = self.commits_by_month.get(yymm, 0) + 1
+
+    def _update_commits_by_year(self, author, date) :
+        year = date.year
+        if year in self.author_of_year :
+            self.author_of_year[year][author] = self.author_of_year[year].get(author, 0) + 1
+        else :
+            self.author_of_year[year] = {}
+            self.author_of_year[year][author] = 1
+        self.commits_by_year[year] = self.commits_by_year.get(year, 0) + 1
+
+    def _update_active_days(self, date) :
+        yymmdd = date.strftime('%Y-%m-%d')
+        if yymmdd != self.last_active_day :
+            self.last_active_day = yymmdd
+            self.active_days.add(yymmdd)
+
+    def _update_timezones(self, timezone) :
+        self.commits_by_timezone[timezone] = self.commits_by_timezone.get(timezone, 0) + 1
 
 def main(args_orig) :
     time_start = time.time()
