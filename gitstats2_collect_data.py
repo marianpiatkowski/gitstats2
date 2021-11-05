@@ -42,6 +42,37 @@ class GitStatisticsData :
         self.active_days = set()
         self.commits_by_timezone = {}
 
+    def reset(self) :
+        self.runstart_stamp = float(0.0)
+        self.first_commit_stamp = 0
+        self.last_commit_stamp = 0
+        self.active_days = set()
+        self.total_files = 0
+        self.total_lines = 0
+        self.total_lines_added = 0
+        self.total_lines_removed = 0
+        self.total_commits = 0
+        self.total_authors = 0
+        self.exectime_commands = float(0.0)
+        self.tags = {}
+        self.domains = {}
+        self.activity_by_hour_of_day = {}
+        self.activity_by_hour_of_day_busiest = 0
+        self.activity_by_day_of_week = {}
+        self.activity_by_hour_of_week = {}
+        self.activity_by_hour_of_week_busiest = 0
+        self.activity_by_month_of_year = {}
+        self.activity_by_year_week = {}
+        self.activity_by_year_week_peak = 0
+        self.authors = {}
+        self.author_of_month = {}
+        self.commits_by_month = {}
+        self.author_of_year = {}
+        self.commits_by_year = {}
+        self.last_active_day = None
+        self.active_days = set()
+        self.commits_by_timezone = {}
+
     def get_runstart_stamp(self) :
         return self.runstart_stamp
 
@@ -90,7 +121,6 @@ rev-parse --short {commit_range}"
 
     def collect(self) :
         self.runstart_stamp = time.time()
-        self.exectime_commands = 0.0
         if not self.configuration['project_name'] :
             self._concat_project_name()
         for gitpath in self._gitpaths :
