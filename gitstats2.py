@@ -6,6 +6,7 @@ import os
 import subprocess
 import gitstats2_markdown
 from gitstats2_collect_data import GitStatisticsData
+from gitstats2_collect_data import GitStatisticsWriter
 from gitstats2_generate_markdown import RMarkdownFile
 
 def main(args_orig) :
@@ -63,9 +64,10 @@ Please see the manual page for more details.""")
         print("FATAL: Output path is not a directory or does not exist")
         sys.exit(1)
 
-    git_statistics = GitStatisticsData(conf, gitpaths, outputpath)
+    git_statistics = GitStatisticsData(conf, gitpaths)
     git_statistics.collect()
-    git_statistics.write()
+    statistics_writer = GitStatisticsWriter(git_statistics)
+    statistics_writer.write(outputpath)
     file_generator = RMarkdownFile(gitstats2_markdown.template, git_statistics)
     os.chdir(outputpath)
     with open(gitstats2_markdown.filename, 'w') as fout:

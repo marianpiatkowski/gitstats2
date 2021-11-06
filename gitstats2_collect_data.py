@@ -10,10 +10,9 @@ import calendar
 from collections import namedtuple
 
 class GitStatisticsData :
-    def __init__(self, conf, gitpaths, outputpath) :
+    def __init__(self, conf, gitpaths) :
         self.configuration = conf.copy()
         self._gitpaths = gitpaths
-        self._outputpath = outputpath
         self.runstart_stamp = float(0.0)
         self.first_commit_stamp = 0
         self.last_commit_stamp = 0
@@ -166,16 +165,6 @@ rev-parse --short {commit_range}"
             self._collect_lines_modified()
             self._collect_lines_modified_by_author()
             os.chdir(prev_dir)
-
-    def write(self) :
-        prev_dir = os.getcwd()
-        os.chdir(self._outputpath)
-        self._write_hour_of_day()
-        self._write_day_of_week()
-        self._write_month_of_year()
-        self._write_commits_by_year_month()
-        self._write_commits_by_year()
-        os.chdir(prev_dir)
 
     def _concat_project_name(self) :
         git_repo_names = \
@@ -547,35 +536,54 @@ rev-parse --short {commit_range}"
         self.changes_by_date_by_author[stamp][author]['commits'] = \
             self.authors[author]['commits']
 
-    def _write_hour_of_day(self) :
+class GitStatisticsWriter :
+    def __init__(self, git_statistics) :
+        self.git_statistics = git_statistics
+
+    def write(self, outputpath) :
+        prev_dir = os.getcwd()
+        os.chdir(outputpath)
+        self.write_hour_of_day()
+        self.write_day_of_week()
+        self.write_month_of_year()
+        self.write_commits_by_year_month()
+        self.write_commits_by_year()
+        os.chdir(prev_dir)
+
+    def write_hour_of_day(self) :
         with open('hour_of_day.csv', 'w', encoding='utf-8') as outputfile :
             outputfile.write('Hour, Commits\n')
+            activity_by_hour_of_day = self.git_statistics.get_activity_by_hour_of_day()
             for i in range(0, 24) :
-                outputfile.write(f"{i}, {self.activity_by_hour_of_day.get(i, 0)}\n")
+                outputfile.write(f"{i}, {activity_by_hour_of_day.get(i, 0)}\n")
 
-    def _write_day_of_week(self) :
+    def write_day_of_week(self) :
         with open('day_of_week.csv', 'w', encoding='utf-8') as outputfile :
             outputfile.write('Weekday, Commits\n')
+            activity_by_day_of_week = self.git_statistics.get_activity_by_day_of_week()
             for i, weekday in enumerate(calendar.day_abbr) :
-                outputfile.write(f"{weekday}, {self.activity_by_day_of_week.get(i, 0)}\n")
+                outputfile.write(f"{weekday}, {activity_by_day_of_week.get(i, 0)}\n")
 
-    def _write_month_of_year(self) :
+    def write_month_of_year(self) :
         with open('month_of_year.csv', 'w', encoding='utf-8') as outputfile :
             outputfile.write('Month, Commits\n')
+            activity_by_month_of_year = self.git_statistics.get_activity_by_month_of_year()
             for i, _ in enumerate(calendar.month_name[1:], 1) :
-                outputfile.write(f"{i}, {self.activity_by_month_of_year.get(i, 0)}\n")
+                outputfile.write(f"{i}, {activity_by_month_of_year.get(i, 0)}\n")
 
-    def _write_commits_by_year_month(self) :
+    def write_commits_by_year_month(self) :
         with open('commits_by_year_month.csv', 'w', encoding='utf-8') as outputfile :
             outputfile.write('Year-Month, Commits\n')
-            for yymm in sorted(self.commits_by_month.keys()) :
-                outputfile.write(f"{yymm}, {self.commits_by_month[yymm]}\n")
+            commits_by_month = self.git_statistics.get_commits_by_month()
+            for yymm in sorted(commits_by_month.keys()) :
+                outputfile.write(f"{yymm}, {commits_by_month[yymm]}\n")
 
-    def _write_commits_by_year(self) :
+    def write_commits_by_year(self) :
         with open('commits_by_year.csv', 'w', encoding='utf-8') as outputfile :
             outputfile.write('Year, Commits\n')
-            for year in sorted(self.commits_by_year.keys()) :
-                outputfile.write(f"{year}, {self.commits_by_year[year]}\n")
+            commits_by_year = self.git_statistics.get_commits_by_year()
+            for year in sorted(commits_by_year.keys()) :
+                outputfile.write(f"{year}, {commits_by_year[year]}\n")
 
 
 def main(args_orig) :
@@ -633,9 +641,10 @@ Please see the manual page for more details.""")
         print("FATAL: Output path is not a directory or does not exist")
         sys.exit(1)
 
-    git_statistics = GitStatisticsData(conf, gitpaths, outputpath)
+    git_statistics = GitStatisticsData(conf, gitpaths)
     git_statistics.collect()
-    git_statistics.write()
+    statistics_writer = GitStatisticsWriter(git_statistics)
+    statistics_writer.write(outputpath)
 
     time_end = time.time()
     exectime_total = time_end - time_start
