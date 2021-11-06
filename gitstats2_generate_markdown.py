@@ -81,7 +81,8 @@ class RMarkdownFile :
             self.git_statistics.get_last_commit_date().strftime(datetime_format)
         results['total_days'] = self.git_statistics.get_commit_delta_days()
         results['active_days'] = len(self.git_statistics.get_active_days())
-        results['perc_active_total'] = 100.0 * results['active_days'] / results['total_days']
+        perc_active_total = f"{(100.0*results['active_days']/results['total_days']):.2f}"
+        results['perc_active_total'] = perc_active_total
         results['total_files'] = self.git_statistics.get_total_files()
         results['total_lines'] = self.git_statistics.get_total_lines_of_code()
         results['added_lines'] = self.git_statistics.get_total_lines_added()

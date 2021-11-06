@@ -6,6 +6,7 @@ import subprocess
 import time
 import datetime
 import re
+from collections import namedtuple
 
 class GitStatisticsData :
     def __init__(self, conf, gitpaths, outputpath) :
@@ -41,6 +42,13 @@ class GitStatisticsData :
         self.last_active_day = None
         self.active_days = set()
         self.commits_by_timezone = {}
+        self.total_size = 0
+        self.extensions = {}
+        self.lines_added_by_month = {}
+        self.lines_removed_by_month = {}
+        self.lines_added_by_year = {}
+        self.lines_removed_by_year = {}
+        self.changes_by_date_by_author = {}
 
     def reset(self) :
         self.runstart_stamp = float(0.0)
@@ -72,6 +80,13 @@ class GitStatisticsData :
         self.last_active_day = None
         self.active_days = set()
         self.commits_by_timezone = {}
+        self.total_size = 0
+        self.extensions = {}
+        self.lines_added_by_month = {}
+        self.lines_removed_by_month = {}
+        self.lines_added_by_year = {}
+        self.lines_removed_by_year = {}
+        self.changes_by_date_by_author = {}
 
     def get_runstart_stamp(self) :
         return self.runstart_stamp
@@ -131,6 +146,9 @@ rev-parse --short {commit_range}"
             self._collect_authors()
             self._collect_tags()
             self._collect_revlist()
+            self._collect_files()
+            self._collect_lines_modified()
+            self._collect_lines_modified_by_author()
             os.chdir(prev_dir)
 
     def _concat_project_name(self) :
@@ -180,6 +198,20 @@ rev-parse --short {commit_range}"
                 return self.configuration['commit_end']
             return f"{self.configuration['commit_begin']}..{self.configuration['commit_end']}"
         return default_range
+
+    @staticmethod
+    def _get_modified_counts(line) :
+        numbers = tuple(map(int, re.findall(r'\d+', line)))
+        mod_counts_tuple = namedtuple('ModCounts', 'files inserted deleted')
+        if len(numbers) == 1 :
+            modification_counts = mod_counts_tuple(numbers[0], inserted=0, deleted=0)
+        elif len(numbers) == 2 and line.find('(+)') != -1 :
+            modification_counts = mod_counts_tuple(numbers[0], inserted=numbers[1], deleted=0)
+        elif len(numbers) == 2 and line.find('(-)') != -1 :
+            modification_counts = mod_counts_tuple(numbers[0], inserted=0, deleted=numbers[1])
+        else :
+            modification_counts = mod_counts_tuple(numbers[0], inserted=numbers[1], deleted=numbers[2])
+        return modification_counts
 
     def _collect_authors(self) :
         cmd = f"git shortlog -s {self._get_log_range()}"
@@ -347,6 +379,148 @@ rev-parse --short {commit_range}"
 
     def _update_timezones(self, timezone) :
         self.commits_by_timezone[timezone] = self.commits_by_timezone.get(timezone, 0) + 1
+
+    def _collect_files(self) :
+        cmd = f"git ls-tree -r -l -z {self._get_commit_range('HEAD', end_only=True)}"
+        pipe_out = self._get_pipe_output([cmd])
+        lines = pipe_out.split('\000')
+        # blobs_to_read = []
+        for line in lines :
+            if not line :
+                continue
+            parts = re.split(r'\s+', line, 4)
+            if parts[0] == '160000' and parts[3] == '-' :
+                # skip submodules
+                continue
+            # blob_id = parts[2]
+            filesize = int(parts[3])
+            fullpath = parts[4]
+            filename = fullpath.split('/')[-1]
+            if filename.find('.') == -1 or filename.rfind('.') == 0 :
+                ext = ''
+            else :
+                ext = filename[(filename.rfind('.')+1):]
+            if len(ext) > self.configuration['max_ext_length'] :
+                ext = ''
+            if ext not in self.extensions :
+                self.extensions[ext] = {'files' : 0,  'lines' : 0}
+            self.extensions[ext]['files'] += 1
+
+            self.total_size += filesize
+            self.total_files += 1
+
+    def _collect_lines_modified(self) :
+        extra = ''
+        if self.configuration['linear_linestats'] :
+            extra = '--first-parent -m'
+        cmd = f"git log --shortstat {extra} --pretty=format:\"%at %aN\" \
+{self._get_log_range('HEAD')}"
+        pipe_out = self._get_pipe_output([cmd])
+        lines = pipe_out.split('\n')
+        lines.reverse()
+        # outputs:
+        #  N files changed, N insertions (+), N deletions(-)
+        # <stamp> <author>
+        inserted = 0
+        deleted = 0
+        total_lines = 0
+        for line in lines :
+            if not line :
+                continue
+            if re.search('files? changed', line) is not None :
+                modified_counts = self._get_modified_counts(line)
+                if len(modified_counts) == 3 :
+                    (_files, inserted, deleted) = modified_counts
+                    total_lines += inserted
+                    total_lines -= deleted
+                    self.total_lines_added += inserted
+                    self.total_lines_removed += deleted
+                else :
+                    print(f"Warning: failed to handle line \"{line}\"")
+                    inserted = 0
+                    deleted = 0
+            else :
+                first_space = line.find(' ')
+                if first_space != -1 :
+                    try :
+                        stamp = int(line[:first_space])
+                        date = datetime.datetime.fromtimestamp(stamp)
+                        self._update_lines_modified_by_month(date, inserted, deleted)
+                        self._update_lines_modified_by_year(date, inserted, deleted)
+                        inserted = 0
+                        deleted = 0
+                    except ValueError :
+                        print(f"Warning: unexpected line \"{line}\"")
+                else :
+                    print(f"Warning unexpected line \"{line}\"")
+        self.total_lines += total_lines
+
+    def _update_lines_modified_by_month(self, date, inserted, deleted) :
+        yymm = date.strftime('%Y-%m')
+        self.lines_added_by_month[yymm] = self.lines_added_by_month.get(yymm, 0) + inserted
+        self.lines_removed_by_month[yymm] = self.lines_removed_by_month.get(yymm, 0) + deleted
+
+    def _update_lines_modified_by_year(self, date, inserted, deleted) :
+        year = date.year
+        self.lines_added_by_year[year] = self.lines_added_by_year.get(year, 0) + inserted
+        self.lines_removed_by_year[year] = self.lines_removed_by_year.get(year, 0) + deleted
+
+    def _collect_lines_modified_by_author(self) :
+        # Similar to _collect_lines_modified, but never use --first-parent
+        # (we need to walk through every commit to know who
+        # committed what, not just through mainline)
+        cmd = f"git log --shortstat --date-order --pretty=format:\"%at %aN\" \
+{self._get_log_range('@')}"
+        pipe_out = self._get_pipe_output([cmd])
+        lines = pipe_out.split('\n')
+        lines.reverse()
+        inserted = 0
+        deleted = 0
+        stamp = 0
+        for line in lines :
+            if not line :
+                continue
+            if re.search('files? changed', line) is not None :
+                modified_counts = self._get_modified_counts(line)
+                if len(modified_counts) == 3 :
+                    (_files, inserted, deleted) = modified_counts
+                else :
+                    print(f"Warning: failed to handle line \"{line}\"")
+                    inserted = 0
+                    deleted = 0
+            else :
+                first_space = line.find(' ')
+                if first_space != -1 :
+                    try :
+                        oldstamp = stamp
+                        (stamp, author) = (int(line[:first_space]), line[first_space+1:])
+                        if oldstamp > stamp :
+                            # clock skew, keep old timestamp to avoid having ugly graph
+                            stamp = oldstamp
+                        self._update_lines_modified_by_author(author, stamp, inserted, deleted)
+                        inserted = 0
+                        deleted = 0
+                    except ValueError :
+                        print(f"Warning: unexpectd line \"{line}\"")
+                else :
+                    print(f"Warning: unexpected line \"{line}\"")
+
+    def _update_lines_modified_by_author(self, author, stamp, inserted, deleted) :
+        if author not in self.authors :
+            self.authors[author] = {'lines_added' : 0, 'lines_removed' : 0, 'commits' : 0}
+        self.authors[author]['commits'] = self.authors[author].get('commits', 0) + 1
+        self.authors[author]['lines_added'] = self.authors[author].get('lines_added', 0) + inserted
+        self.authors[author]['lines_removed'] = \
+            self.authors[author].get('lines_removed', 0) + deleted
+        if stamp not in self.changes_by_date_by_author :
+            self.changes_by_date_by_author[stamp] = {}
+        if author not in self.changes_by_date_by_author[stamp] :
+            self.changes_by_date_by_author[stamp][author] = {}
+        self.changes_by_date_by_author[stamp][author]['lines_added'] = \
+            self.authors[author]['lines_added']
+        self.changes_by_date_by_author[stamp][author]['commits'] = \
+            self.authors[author]['commits']
+
 
 def main(args_orig) :
     time_start = time.time()
