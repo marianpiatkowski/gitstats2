@@ -6,6 +6,7 @@ import subprocess
 import time
 import datetime
 import re
+import calendar
 from collections import namedtuple
 
 class GitStatisticsData :
@@ -134,6 +135,21 @@ rev-parse --short {commit_range}"
     def get_exectime_commands(self) :
         return self.exectime_commands
 
+    def get_activity_by_hour_of_day(self) :
+        return self.activity_by_hour_of_day
+
+    def get_activity_by_day_of_week(self) :
+        return self.activity_by_day_of_week
+
+    def get_activity_by_month_of_year(self) :
+        return self.activity_by_month_of_year
+
+    def get_commits_by_month(self) :
+        return self.commits_by_month
+
+    def get_commits_by_year(self) :
+        return self.commits_by_year
+
     def collect(self) :
         self.runstart_stamp = time.time()
         if not self.configuration['project_name'] :
@@ -150,6 +166,16 @@ rev-parse --short {commit_range}"
             self._collect_lines_modified()
             self._collect_lines_modified_by_author()
             os.chdir(prev_dir)
+
+    def write(self) :
+        prev_dir = os.getcwd()
+        os.chdir(self._outputpath)
+        self._write_hour_of_day()
+        self._write_day_of_week()
+        self._write_month_of_year()
+        self._write_commits_by_year_month()
+        self._write_commits_by_year()
+        os.chdir(prev_dir)
 
     def _concat_project_name(self) :
         git_repo_names = \
@@ -521,6 +547,36 @@ rev-parse --short {commit_range}"
         self.changes_by_date_by_author[stamp][author]['commits'] = \
             self.authors[author]['commits']
 
+    def _write_hour_of_day(self) :
+        with open('hour_of_day.csv', 'w', encoding='utf-8') as outputfile :
+            outputfile.write('Hour, Commits\n')
+            for i in range(0, 24) :
+                outputfile.write(f"{i}, {self.activity_by_hour_of_day.get(i, 0)}\n")
+
+    def _write_day_of_week(self) :
+        with open('day_of_week.csv', 'w', encoding='utf-8') as outputfile :
+            outputfile.write('Weekday, Commits\n')
+            for i, weekday in enumerate(calendar.day_abbr) :
+                outputfile.write(f"{weekday}, {self.activity_by_day_of_week.get(i, 0)}\n")
+
+    def _write_month_of_year(self) :
+        with open('month_of_year.csv', 'w', encoding='utf-8') as outputfile :
+            outputfile.write('Month, Commits\n')
+            for i, _ in enumerate(calendar.month_name[1:], 1) :
+                outputfile.write(f"{i}, {self.activity_by_month_of_year.get(i, 0)}\n")
+
+    def _write_commits_by_year_month(self) :
+        with open('commits_by_year_month.csv', 'w', encoding='utf-8') as outputfile :
+            outputfile.write('Year-Month, Commits\n')
+            for yymm in sorted(self.commits_by_month.keys()) :
+                outputfile.write(f"{yymm}, {self.commits_by_month[yymm]}\n")
+
+    def _write_commits_by_year(self) :
+        with open('commits_by_year.csv', 'w', encoding='utf-8') as outputfile :
+            outputfile.write('Year, Commits\n')
+            for year in sorted(self.commits_by_year.keys()) :
+                outputfile.write(f"{year}, {self.commits_by_year[year]}\n")
+
 
 def main(args_orig) :
     time_start = time.time()
@@ -579,6 +635,7 @@ Please see the manual page for more details.""")
 
     git_statistics = GitStatisticsData(conf, gitpaths, outputpath)
     git_statistics.collect()
+    git_statistics.write()
 
     time_end = time.time()
     exectime_total = time_end - time_start

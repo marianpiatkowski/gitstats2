@@ -65,6 +65,7 @@ Please see the manual page for more details.""")
 
     git_statistics = GitStatisticsData(conf, gitpaths, outputpath)
     git_statistics.collect()
+    git_statistics.write()
     file_generator = RMarkdownFile(gitstats2_markdown.template, git_statistics)
     os.chdir(outputpath)
     with open(gitstats2_markdown.filename, 'w') as fout:
