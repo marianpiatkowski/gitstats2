@@ -9,6 +9,10 @@ from gitstats2_collect_data import GitStatisticsData
 from gitstats2_collect_data import GitStatisticsWriter
 from gitstats2_generate_markdown import RMarkdownFile
 
+if sys.version_info < (3, 6) :
+    print("Python 3.6 or higher is required for gitstats2", file=sys.stderr)
+    sys.exit(1)
+
 def main(args_orig) :
     time_start = time.time()
     conf = {

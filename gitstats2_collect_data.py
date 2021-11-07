@@ -9,6 +9,10 @@ import re
 import calendar
 from collections import namedtuple
 
+if sys.version_info < (3, 6) :
+    print("Python 3.6 or higher is required for gitstats2", file=sys.stderr)
+    sys.exit(1)
+
 class GitStatisticsData :
     def __init__(self, conf, gitpaths) :
         self.configuration = conf.copy()
