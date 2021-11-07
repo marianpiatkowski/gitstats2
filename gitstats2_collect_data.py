@@ -153,6 +153,20 @@ rev-parse --short {commit_range}"
     def get_commits_by_year(self) :
         return self.commits_by_year
 
+    def get_changes_by_date_by_author(self) :
+        return self.changes_by_date_by_author
+
+    def get_authors(self, limit=None) :
+        res = self._get_keys_sorted_by_value_key(self.authors, 'commits')
+        res.reverse()
+        return res[:limit]
+
+    def get_domains_by_commits(self) :
+        return self._get_keys_sorted_by_value_key(self.domains, 'commits')
+
+    def get_domain_info(self, domain) :
+        return self.domains[domain]
+
     def collect(self) :
         self.runstart_stamp = time.time()
         if not self.configuration['project_name'] :
@@ -231,6 +245,11 @@ rev-parse --short {commit_range}"
         else :
             modification_counts = mod_counts_tuple(numbers[0], inserted=numbers[1], deleted=numbers[2])
         return modification_counts
+
+    @staticmethod
+    def _get_keys_sorted_by_value_key(input_dict, key) :
+        by_value_key_list = [(input_dict[el][key], el) for el in input_dict.keys()]
+        return [el for *_, el in sorted(by_value_key_list)]
 
     def _collect_authors(self) :
         cmd = f"git shortlog -s {self._get_log_range()}"
@@ -552,6 +571,8 @@ class GitStatisticsWriter :
         self.write_month_of_year()
         self.write_commits_by_year_month()
         self.write_commits_by_year()
+        self.write_lines_and_commits_by_author()
+        self.write_domains()
         os.chdir(prev_dir)
 
     def write_hour_of_day(self) :
@@ -589,6 +610,43 @@ class GitStatisticsWriter :
             for year in sorted(commits_by_year.keys()) :
                 outputfile.write(f"{year}, {commits_by_year[year]}\n")
 
+    def write_lines_and_commits_by_author(self) :
+        lines_by_authors = {}
+        commits_by_authors = {}
+        limit = self.git_statistics.configuration['max_authors']
+        authors_to_write = self.git_statistics.get_authors(limit)
+        for author in authors_to_write :
+            lines_by_authors[author] = '0'
+            commits_by_authors[author] = '0'
+        with open('lines_of_code_by_author.csv', 'w', encoding='utf-8') as outputfile1, \
+             open('commits_by_author.csv', 'w', encoding='utf-8') as outputfile2 :
+            changes_by_date_by_author = self.git_statistics.get_changes_by_date_by_author()
+            outputfile1.write('Stamp, ' + ', '.join(authors_to_write) + '\n')
+            outputfile2.write('Stamp, ' + ', '.join(authors_to_write) + '\n')
+            for stamp in sorted(changes_by_date_by_author.keys()) :
+                outputfile1.write(f"{stamp}, ")
+                outputfile2.write(f"{stamp}, ")
+                for author in set(changes_by_date_by_author[stamp].keys()).intersection(
+                        authors_to_write) :
+                    lines_by_authors[author] = \
+                        str(changes_by_date_by_author[stamp][author]['lines_added'])
+                    commits_by_authors[author] = \
+                        str(changes_by_date_by_author[stamp][author]['commits'])
+                outputfile1.write(', '.join(lines_by_authors.values()))
+                outputfile2.write(', '.join(commits_by_authors.values()))
+                outputfile1.write('\n')
+                outputfile2.write('\n')
+
+    def write_domains(self) :
+        domains_by_commits = self.git_statistics.get_domains_by_commits()
+        domains_by_commits.reverse()
+        with open('domains.csv', 'w', encoding='utf-8') as outputfile :
+            outputfile.write('Domain, Ranking, Commits\n')
+            for i, domain in enumerate(domains_by_commits, 1) :
+                if i > self.git_statistics.configuration['max_domains'] :
+                    break
+                domain_info = self.git_statistics.get_domain_info(domain)
+                outputfile.write(f"{domain}, {i}, {domain_info['commits']}\n")
 
 def main(args_orig) :
     time_start = time.time()
