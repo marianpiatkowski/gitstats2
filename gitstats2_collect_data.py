@@ -53,6 +53,7 @@ class GitStatisticsData :
         self.lines_added_by_year = {}
         self.lines_removed_by_year = {}
         self.changes_by_date_by_author = {}
+        self.changes_by_date = {}
 
     def reset(self) :
         self.runstart_stamp = float(0.0)
@@ -91,6 +92,7 @@ class GitStatisticsData :
         self.lines_added_by_year = {}
         self.lines_removed_by_year = {}
         self.changes_by_date_by_author = {}
+        self.changes_by_date = {}
 
     def get_runstart_stamp(self) :
         return self.runstart_stamp
@@ -166,6 +168,9 @@ rev-parse --short {commit_range}"
 
     def get_domain_info(self, domain) :
         return self.domains[domain]
+
+    def get_changes_by_date(self) :
+        return self.changes_by_date
 
     def collect(self) :
         self.runstart_stamp = time.time()
@@ -449,7 +454,7 @@ rev-parse --short {commit_range}"
             self.total_size += filesize
             self.total_files += 1
 
-    def _collect_lines_modified(self, _repository) :
+    def _collect_lines_modified(self, repository) :
         extra = ''
         if self.configuration['linear_linestats'] :
             extra = '--first-parent -m'
@@ -461,6 +466,7 @@ rev-parse --short {commit_range}"
         # outputs:
         #  N files changed, N insertions (+), N deletions(-)
         # <stamp> <author>
+        files = 0
         inserted = 0
         deleted = 0
         total_lines = 0
@@ -470,23 +476,32 @@ rev-parse --short {commit_range}"
             if re.search('files? changed', line) is not None :
                 modified_counts = self._get_modified_counts(line)
                 if len(modified_counts) == 3 :
-                    (_files, inserted, deleted) = modified_counts
+                    (files, inserted, deleted) = modified_counts
                     total_lines += inserted
                     total_lines -= deleted
                     self.total_lines_added += inserted
                     self.total_lines_removed += deleted
                 else :
                     print(f"Warning: failed to handle line \"{line}\"")
+                    files = 0
                     inserted = 0
                     deleted = 0
             else :
                 first_space = line.find(' ')
                 if first_space != -1 :
                     try :
-                        stamp = int(line[:first_space])
-                        date = datetime.datetime.fromtimestamp(stamp)
+                        stamp = line[:first_space]
+                        # meld stamp and repository into a single key for self.changes_by_date
+                        stamp_key = ' '.join([stamp, repository])
+                        self.changes_by_date[stamp_key] = {
+                            'files' : files,
+                            'inserted' : inserted,
+                            'deleted' : deleted,
+                            'lines' : total_lines }
+                        date = datetime.datetime.fromtimestamp(int(stamp))
                         self._update_lines_modified_by_month(date, inserted, deleted)
                         self._update_lines_modified_by_year(date, inserted, deleted)
+                        files = 0
                         inserted = 0
                         deleted = 0
                     except ValueError :
@@ -580,6 +595,7 @@ class GitStatisticsWriter :
         self.write_commits_by_year()
         self.write_lines_and_commits_by_author()
         self.write_domains()
+        self.write_lines_of_code()
         os.chdir(prev_dir)
 
     def write_hour_of_day(self) :
@@ -654,6 +670,19 @@ class GitStatisticsWriter :
                     break
                 domain_info = self.git_statistics.get_domain_info(domain)
                 outputfile.write(f"{domain}, {i}, {domain_info['commits']}\n")
+
+    def write_lines_of_code(self) :
+        changes_by_date = self.git_statistics.get_changes_by_date()
+        with open('lines_of_code.csv', 'w', encoding='utf-8') as outputfile :
+            total_lines = 0
+            outputfile.write('Timestamp, TotalLines\n')
+            for stamp_key in sorted(changes_by_date.keys()) :
+                # structure of stamp_key
+                # stamp repository
+                stamp = stamp_key.split()[0]
+                total_lines += changes_by_date[stamp_key]['inserted']
+                total_lines -= changes_by_date[stamp_key]['deleted']
+                outputfile.write(f"{stamp}, {total_lines}\n")
 
 def main(args_orig) :
     time_start = time.time()
