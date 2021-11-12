@@ -20,7 +20,6 @@ class GitStatisticsData :
         self.runstart_stamp = float(0.0)
         self.first_commit_stamp = 0
         self.last_commit_stamp = 0
-        self.active_days = set()
         self.total_files = 0
         self.total_lines = 0
         self.total_lines_added = 0
@@ -39,6 +38,7 @@ class GitStatisticsData :
         self.activity_by_year_week = {}
         self.activity_by_year_week_peak = 0
         self.authors = {}
+        self._authors_of_repository = {}
         self.author_of_month = {}
         self.commits_by_month = {}
         self.author_of_year = {}
@@ -58,7 +58,6 @@ class GitStatisticsData :
         self.runstart_stamp = float(0.0)
         self.first_commit_stamp = 0
         self.last_commit_stamp = 0
-        self.active_days = set()
         self.total_files = 0
         self.total_lines = 0
         self.total_lines_added = 0
@@ -77,6 +76,7 @@ class GitStatisticsData :
         self.activity_by_year_week = {}
         self.activity_by_year_week_peak = 0
         self.authors = {}
+        self._authors_of_repository = {}
         self.author_of_month = {}
         self.commits_by_month = {}
         self.author_of_year = {}
@@ -175,6 +175,7 @@ rev-parse --short {commit_range}"
             prev_dir = os.getcwd()
             os.chdir(gitpath)
             print('Collecting data...')
+            self._authors_of_repository = {}
             repository = os.path.basename(os.path.abspath(gitpath))
             repo_names.append(repository)
             self._collect_authors(repository)
@@ -184,6 +185,7 @@ rev-parse --short {commit_range}"
             self._collect_files(repository)
             self._collect_lines_modified(repository)
             self._collect_lines_modified_by_author(repository)
+            self.authors.update(self._authors_of_repository)
             os.chdir(prev_dir)
         if not self.configuration['project_name'] :
             self.configuration['project_name'] = ', '.join(repo_names)
@@ -369,27 +371,27 @@ rev-parse --short {commit_range}"
             self.activity_by_year_week_peak = self.activity_by_year_week[yyw]
 
     def _update_author_stats(self, author, stamp) :
-        if author not in self.authors :
-            self.authors[author] = {}
+        if author not in self._authors_of_repository :
+            self._authors_of_repository[author] = {}
         # commits, note again that commits may be in any date order
         # because of cherry-picking and patches
-        if 'last_commit_stamp' not in self.authors[author] :
-            self.authors[author]['last_commit_stamp'] = stamp
-        if stamp > self.authors[author]['last_commit_stamp'] :
-            self.authors[author]['last_commit_stamp'] = stamp
-        if 'first_commit_stamp' not in self.authors[author] :
-            self.authors[author]['first_commit_stamp'] = stamp
-        if stamp < self.authors[author]['first_commit_stamp'] :
-            self.authors[author]['first_commit_stamp'] = stamp
+        if 'last_commit_stamp' not in self._authors_of_repository[author] :
+            self._authors_of_repository[author]['last_commit_stamp'] = stamp
+        if stamp > self._authors_of_repository[author]['last_commit_stamp'] :
+            self._authors_of_repository[author]['last_commit_stamp'] = stamp
+        if 'first_commit_stamp' not in self._authors_of_repository[author] :
+            self._authors_of_repository[author]['first_commit_stamp'] = stamp
+        if stamp < self._authors_of_repository[author]['first_commit_stamp'] :
+            self._authors_of_repository[author]['first_commit_stamp'] = stamp
 
     def _update_author_activity(self, author, date) :
         yymmdd = date.strftime('%Y-%m-%d')
-        if 'last_active_day' not in self.authors[author] :
-            self.authors[author]['last_active_day'] = yymmdd
-            self.authors[author]['active_days'] = set([yymmdd])
-        elif yymmdd != self.authors[author]['last_active_day'] :
-            self.authors[author]['last_active_day'] = yymmdd
-            self.authors[author]['active_days'].add(yymmdd)
+        if 'last_active_day' not in self._authors_of_repository[author] :
+            self._authors_of_repository[author]['last_active_day'] = yymmdd
+            self._authors_of_repository[author]['active_days'] = set([yymmdd])
+        elif yymmdd != self._authors_of_repository[author]['last_active_day'] :
+            self._authors_of_repository[author]['last_active_day'] = yymmdd
+            self._authors_of_repository[author]['active_days'].add(yymmdd)
 
     def _update_commits_by_month(self, author, date) :
         yymm = date.strftime('%Y-%m')
@@ -535,7 +537,7 @@ rev-parse --short {commit_range}"
                         if oldstamp > stamp :
                             # clock skew, keep old timestamp to avoid having ugly graph
                             stamp = oldstamp
-                        # merge repository and stamp into a single key for self.changes_by_date_by_author
+                        # meld repository and stamp into a single key for self.changes_by_date_by_author
                         stamp_key = ' '.join([repository, str(stamp)])
                         self._update_lines_modified_by_author(author, stamp_key, inserted, deleted)
                         inserted = 0
@@ -546,20 +548,23 @@ rev-parse --short {commit_range}"
                     print(f"Warning: unexpected line \"{line}\"")
 
     def _update_lines_modified_by_author(self, author, stamp_key, inserted, deleted) :
-        if author not in self.authors :
-            self.authors[author] = {'lines_added' : 0, 'lines_removed' : 0, 'commits' : 0}
-        self.authors[author]['commits'] = self.authors[author].get('commits', 0) + 1
-        self.authors[author]['lines_added'] = self.authors[author].get('lines_added', 0) + inserted
-        self.authors[author]['lines_removed'] = \
-            self.authors[author].get('lines_removed', 0) + deleted
+        if author not in self._authors_of_repository :
+            self._authors_of_repository[author] = \
+                {'lines_added' : 0, 'lines_removed' : 0, 'commits' : 0}
+        self._authors_of_repository[author]['commits'] = \
+            self._authors_of_repository[author].get('commits', 0) + 1
+        self._authors_of_repository[author]['lines_added'] = \
+            self._authors_of_repository[author].get('lines_added', 0) + inserted
+        self._authors_of_repository[author]['lines_removed'] = \
+            self._authors_of_repository[author].get('lines_removed', 0) + deleted
         if stamp_key not in self.changes_by_date_by_author :
             self.changes_by_date_by_author[stamp_key] = {}
         if author not in self.changes_by_date_by_author[stamp_key] :
             self.changes_by_date_by_author[stamp_key][author] = {}
         self.changes_by_date_by_author[stamp_key][author]['lines_added'] = \
-            self.authors[author]['lines_added']
+            self._authors_of_repository[author]['lines_added']
         self.changes_by_date_by_author[stamp_key][author]['commits'] = \
-            self.authors[author]['commits']
+            self._authors_of_repository[author]['commits']
 
 class GitStatisticsWriter :
     def __init__(self, git_statistics) :
