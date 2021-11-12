@@ -26,7 +26,7 @@ class GitStatisticsData :
         self.total_lines_added = 0
         self.total_lines_removed = 0
         self.total_commits = 0
-        self.total_authors = 0
+        self.total_authors = set()
         self.exectime_commands = float(0.0)
         self.tags = {}
         self.domains = {}
@@ -64,7 +64,7 @@ class GitStatisticsData :
         self.total_lines_added = 0
         self.total_lines_removed = 0
         self.total_commits = 0
-        self.total_authors = 0
+        self.total_authors = set()
         self.exectime_commands = float(0.0)
         self.tags = {}
         self.domains = {}
@@ -169,25 +169,24 @@ rev-parse --short {commit_range}"
 
     def collect(self) :
         self.runstart_stamp = time.time()
-        if not self.configuration['project_name'] :
-            self._concat_project_name()
+        repo_names = []
         for gitpath in self._gitpaths :
             print(f"Git path: {gitpath}")
             prev_dir = os.getcwd()
             os.chdir(gitpath)
             print('Collecting data...')
-            self._collect_authors()
-            self._collect_tags()
-            self._collect_revlist()
-            self._collect_files()
-            self._collect_lines_modified()
-            self._collect_lines_modified_by_author()
+            repository = os.path.basename(os.path.abspath(gitpath))
+            repo_names.append(repository)
+            self._collect_authors(repository)
+            self._collect_tags(repository)
+            self._collect_tags_info(repository)
+            self._collect_revlist(repository)
+            self._collect_files(repository)
+            self._collect_lines_modified(repository)
+            self._collect_lines_modified_by_author(repository)
             os.chdir(prev_dir)
-
-    def _concat_project_name(self) :
-        git_repo_names = \
-            list(map(lambda el : os.path.basename(os.path.abspath(el)), self._gitpaths))
-        self.configuration['project_name'] = ', '.join(git_repo_names)
+        if not self.configuration['project_name'] :
+            self.configuration['project_name'] = ', '.join(repo_names)
 
     def _get_pipe_output(self, cmds, quiet=False) :
         start = time.time()
@@ -251,14 +250,16 @@ rev-parse --short {commit_range}"
         by_value_key_list = [(input_dict[el][key], el) for el in input_dict.keys()]
         return [el for *_, el in sorted(by_value_key_list)]
 
-    def _collect_authors(self) :
+    def _collect_authors(self, _repository) :
         cmd = f"git shortlog -s {self._get_log_range()}"
-        pipe_out = self._get_pipe_output([cmd, 'wc -l'])
-        self.total_authors += int(pipe_out)
+        pipe_out = self._get_pipe_output([cmd, 'cut -c8-'])
+        lines = pipe_out.split('\n')
+        self.total_authors.update(lines)
 
-    def _collect_tags(self) :
+    def _collect_tags(self, repository) :
+        self.tags[repository] = {}
+        tags = self.tags[repository]
         lines = self._get_pipe_output(['git show-ref --tags']).split('\n')
-        tags = {}
         for line in lines :
             if not line :
                 continue
@@ -279,10 +280,9 @@ rev-parse --short {commit_range}"
                     'date' : datetime.datetime.fromtimestamp(stamp).strftime('%Y-%m-%d'),
                     'commits': 0,
                     'authors': {} }
-        self._update_tags_info(tags)
 
-    def _update_tags_info(self, tags) :
-        self.tags.update(tags)
+    def _collect_tags_info(self, repository) :
+        tags = self.tags[repository]
         tags_list = [(tagdetail['date'], tagname) for tagname, tagdetail in tags.items()]
         tags_sorted_by_date_desc = [tagname for *_, tagname in sorted(tags_list,reverse=True)]
         prev = None
@@ -299,10 +299,10 @@ rev-parse --short {commit_range}"
                 parts = re.split(r'\s+', line, 2)
                 commits = int(parts[1])
                 author = parts[2]
-                self.tags[tag]['commits'] += commits
-                self.tags[tag]['authors'][author] = commits
+                tags[tag]['commits'] += commits
+                tags[tag]['authors'][author] = commits
 
-    def _collect_revlist(self) :
+    def _collect_revlist(self, _repository) :
         # Outputs "<stamp> <date> <time> <timezone> <author> '<' <mail> '>'"
         cmd = f"git rev-list --pretty=format:\"%at %ai %aN <%aE>\" {self._get_log_range('HEAD')}"
         pipe_out = self._get_pipe_output([cmd, 'grep -v ^commit'])
@@ -418,7 +418,7 @@ rev-parse --short {commit_range}"
     def _update_timezones(self, timezone) :
         self.commits_by_timezone[timezone] = self.commits_by_timezone.get(timezone, 0) + 1
 
-    def _collect_files(self) :
+    def _collect_files(self, _repository) :
         cmd = f"git ls-tree -r -l -z {self._get_commit_range('HEAD', end_only=True)}"
         pipe_out = self._get_pipe_output([cmd])
         lines = pipe_out.split('\000')
@@ -447,7 +447,7 @@ rev-parse --short {commit_range}"
             self.total_size += filesize
             self.total_files += 1
 
-    def _collect_lines_modified(self) :
+    def _collect_lines_modified(self, _repository) :
         extra = ''
         if self.configuration['linear_linestats'] :
             extra = '--first-parent -m'
@@ -503,7 +503,7 @@ rev-parse --short {commit_range}"
         self.lines_added_by_year[year] = self.lines_added_by_year.get(year, 0) + inserted
         self.lines_removed_by_year[year] = self.lines_removed_by_year.get(year, 0) + deleted
 
-    def _collect_lines_modified_by_author(self) :
+    def _collect_lines_modified_by_author(self, repository) :
         # Similar to _collect_lines_modified, but never use --first-parent
         # (we need to walk through every commit to know who
         # committed what, not just through mainline)
@@ -535,7 +535,9 @@ rev-parse --short {commit_range}"
                         if oldstamp > stamp :
                             # clock skew, keep old timestamp to avoid having ugly graph
                             stamp = oldstamp
-                        self._update_lines_modified_by_author(author, stamp, inserted, deleted)
+                        # merge repository and stamp into a single key for self.changes_by_date_by_author
+                        stamp_key = ' '.join([repository, str(stamp)])
+                        self._update_lines_modified_by_author(author, stamp_key, inserted, deleted)
                         inserted = 0
                         deleted = 0
                     except ValueError :
@@ -543,20 +545,20 @@ rev-parse --short {commit_range}"
                 else :
                     print(f"Warning: unexpected line \"{line}\"")
 
-    def _update_lines_modified_by_author(self, author, stamp, inserted, deleted) :
+    def _update_lines_modified_by_author(self, author, stamp_key, inserted, deleted) :
         if author not in self.authors :
             self.authors[author] = {'lines_added' : 0, 'lines_removed' : 0, 'commits' : 0}
         self.authors[author]['commits'] = self.authors[author].get('commits', 0) + 1
         self.authors[author]['lines_added'] = self.authors[author].get('lines_added', 0) + inserted
         self.authors[author]['lines_removed'] = \
             self.authors[author].get('lines_removed', 0) + deleted
-        if stamp not in self.changes_by_date_by_author :
-            self.changes_by_date_by_author[stamp] = {}
-        if author not in self.changes_by_date_by_author[stamp] :
-            self.changes_by_date_by_author[stamp][author] = {}
-        self.changes_by_date_by_author[stamp][author]['lines_added'] = \
+        if stamp_key not in self.changes_by_date_by_author :
+            self.changes_by_date_by_author[stamp_key] = {}
+        if author not in self.changes_by_date_by_author[stamp_key] :
+            self.changes_by_date_by_author[stamp_key][author] = {}
+        self.changes_by_date_by_author[stamp_key][author]['lines_added'] = \
             self.authors[author]['lines_added']
-        self.changes_by_date_by_author[stamp][author]['commits'] = \
+        self.changes_by_date_by_author[stamp_key][author]['commits'] = \
             self.authors[author]['commits']
 
 class GitStatisticsWriter :
