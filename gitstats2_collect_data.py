@@ -54,6 +54,7 @@ class GitStatisticsData :
         self.lines_removed_by_year = {}
         self.changes_by_date_by_author = {}
         self.changes_by_date = {}
+        self.files_by_stamp = {}
 
     def reset(self) :
         self.runstart_stamp = float(0.0)
@@ -93,6 +94,7 @@ class GitStatisticsData :
         self.lines_removed_by_year = {}
         self.changes_by_date_by_author = {}
         self.changes_by_date = {}
+        self.files_by_stamp = {}
 
     def get_runstart_stamp(self) :
         return self.runstart_stamp
@@ -172,6 +174,9 @@ rev-parse --short {commit_range}"
     def get_changes_by_date(self) :
         return self.changes_by_date
 
+    def get_files_by_stamp(self) :
+        return self.files_by_stamp
+
     def collect(self) :
         self.runstart_stamp = time.time()
         repo_names = []
@@ -186,10 +191,11 @@ rev-parse --short {commit_range}"
             self._collect_authors(repository)
             self._collect_tags(repository)
             self._collect_tags_info(repository)
-            self._collect_revlist(repository)
+            self._collect_commits_graph(repository)
             self._collect_files(repository)
             self._collect_lines_modified(repository)
             self._collect_lines_modified_by_author(repository)
+            self._collect_revlist(repository)
             self._update_and_accumulate_authors_stats()
             os.chdir(prev_dir)
         if not self.configuration['project_name'] :
@@ -309,7 +315,7 @@ rev-parse --short {commit_range}"
                 tags[tag]['commits'] += commits
                 tags[tag]['authors'][author] = commits
 
-    def _collect_revlist(self, _repository) :
+    def _collect_commits_graph(self, _repository) :
         # Outputs "<stamp> <date> <time> <timezone> <author> '<' <mail> '>'"
         cmd = f"git rev-list --pretty=format:\"%at %ai %aN <%aE>\" {self._get_log_range('HEAD')}"
         pipe_out = self._get_pipe_output([cmd, 'grep -v ^commit'])
@@ -588,6 +594,26 @@ rev-parse --short {commit_range}"
         for author, stats in self._authors_of_repository.items() :
             self._update_and_accumulate_from(author, stats)
 
+    def _collect_revlist(self, repository) :
+        # Outputs "<stamp> <revlist>"
+        cmd = f"git rev-list --pretty=format:\"%at %T\" {self._get_log_range('HEAD')}"
+        pipe_out = self._get_pipe_output([cmd, 'grep -v ^commit'])
+        lines = pipe_out.strip().split('\n')
+        lines.reverse()
+        prev_num_files = 0
+        for line in lines :
+            timestamp, rev = line.split()
+            pipe_out = self._get_pipe_output([f"git ls-tree -r --name-only \"{rev}\""])
+            file_tree = pipe_out.split('\n')
+            num_files = len(file_tree)
+            # meld stamp and repository into a single key for self.files_by_stamp
+            stamp_key = ' '.join([timestamp, repository])
+            if stamp_key not in self.files_by_stamp :
+                self.files_by_stamp[stamp_key] = {}
+            self.files_by_stamp[stamp_key]['files'] = num_files
+            self.files_by_stamp[stamp_key]['new_files'] = num_files - prev_num_files
+            prev_num_files = num_files
+
     def _update_and_accumulate_from(self, author, stats) :
         if author not in self.authors :
             self.authors[author] = stats.copy()
@@ -619,6 +645,7 @@ class GitStatisticsWriter :
         self.write_lines_and_commits_by_author()
         self.write_domains()
         self.write_lines_of_code()
+        self.write_files_by_date()
         os.chdir(prev_dir)
 
     def write_hour_of_day(self) :
@@ -708,6 +735,18 @@ class GitStatisticsWriter :
                 total_lines += changes_by_date[stamp_key]['inserted']
                 total_lines -= changes_by_date[stamp_key]['deleted']
                 outputfile.write(f"{stamp}, {total_lines}\n")
+
+    def write_files_by_date(self) :
+        files_by_stamp = self.git_statistics.get_files_by_stamp()
+        total_files = 0
+        with open('files_by_date.csv', 'w', encoding='utf-8') as outputfile :
+            outputfile.write('Timestamp, Total files\n')
+            for stamp_key in sorted(files_by_stamp.keys()) :
+                # structure of stamp_key
+                # stamp repository
+                stamp = stamp_key.split()[0]
+                total_files += files_by_stamp[stamp_key]['new_files']
+                outputfile.write(f"{stamp}, {total_files}\n")
 
 def main(args_orig) :
     time_start = time.time()
