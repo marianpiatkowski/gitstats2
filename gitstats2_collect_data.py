@@ -425,7 +425,7 @@ rev-parse --short {commit_range}"
 
     def _update_active_days(self, date) :
         yymmdd = date.strftime('%Y-%m-%d')
-        if self.first_active_day == None :
+        if self.first_active_day is None :
             self.first_active_day = yymmdd
         if yymmdd < self.first_active_day :
             self.first_active_day = yymmdd
