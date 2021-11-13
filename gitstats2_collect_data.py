@@ -43,7 +43,7 @@ class GitStatisticsData :
         self.commits_by_month = {}
         self.author_of_year = {}
         self.commits_by_year = {}
-        self.last_active_day = None
+        self.first_active_day = None
         self.active_days = set()
         self.commits_by_timezone = {}
         self.total_size = 0
@@ -82,7 +82,7 @@ class GitStatisticsData :
         self.commits_by_month = {}
         self.author_of_year = {}
         self.commits_by_year = {}
-        self.last_active_day = None
+        self.first_active_day = None
         self.active_days = set()
         self.commits_by_timezone = {}
         self.total_size = 0
@@ -391,12 +391,13 @@ rev-parse --short {commit_range}"
 
     def _update_author_activity(self, author, date) :
         yymmdd = date.strftime('%Y-%m-%d')
-        if 'last_active_day' not in self._authors_of_repository[author] :
-            self._authors_of_repository[author]['last_active_day'] = yymmdd
+        if 'first_active_day' not in self._authors_of_repository[author] :
+            self._authors_of_repository[author]['first_active_day'] = yymmdd
+        if yymmdd < self._authors_of_repository[author]['first_active_day'] :
+            self._authors_of_repository[author]['first_active_day'] = yymmdd
+        if 'active_days' not in self._authors_of_repository[author] :
             self._authors_of_repository[author]['active_days'] = set([yymmdd])
-        elif yymmdd != self._authors_of_repository[author]['last_active_day'] :
-            self._authors_of_repository[author]['last_active_day'] = yymmdd
-            self._authors_of_repository[author]['active_days'].add(yymmdd)
+        self._authors_of_repository[author]['active_days'].add(yymmdd)
 
     def _update_commits_by_month(self, author, date) :
         yymm = date.strftime('%Y-%m')
@@ -418,9 +419,11 @@ rev-parse --short {commit_range}"
 
     def _update_active_days(self, date) :
         yymmdd = date.strftime('%Y-%m-%d')
-        if yymmdd != self.last_active_day :
-            self.last_active_day = yymmdd
-            self.active_days.add(yymmdd)
+        if self.first_active_day == None :
+            self.first_active_day = yymmdd
+        if yymmdd < self.first_active_day :
+            self.first_active_day = yymmdd
+        self.active_days.add(yymmdd)
 
     def _update_timezones(self, timezone) :
         self.commits_by_timezone[timezone] = self.commits_by_timezone.get(timezone, 0) + 1
@@ -552,8 +555,8 @@ rev-parse --short {commit_range}"
                         if oldstamp > stamp :
                             # clock skew, keep old timestamp to avoid having ugly graph
                             stamp = oldstamp
-                        # meld repository and stamp into a single key for self.changes_by_date_by_author
-                        stamp_key = ' '.join([repository, str(stamp)])
+                        # meld stamp and repository into a single key for self.changes_by_date_by_author
+                        stamp_key = ' '.join([str(stamp), repository])
                         self._update_lines_modified_by_author(author, stamp_key, inserted, deleted)
                         inserted = 0
                         deleted = 0

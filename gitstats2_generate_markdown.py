@@ -94,9 +94,10 @@ class RMarkdownFile :
         avg_commits_per_day = \
             float(self.git_statistics.get_total_commits())/self.git_statistics.get_commit_delta_days()
         results['avg_commits_per_day'] = f"{avg_commits_per_day:.1f}"
-        results['authors'] = self.git_statistics.get_total_authors()
+        total_authors = len(self.git_statistics.get_total_authors())
+        results['authors'] = total_authors
         avg_commits_per_author = \
-            float(self.git_statistics.get_total_commits())/self.git_statistics.get_total_authors()
+            float(self.git_statistics.get_total_commits())/total_authors
         results['avg_commits_per_author'] = f"{avg_commits_per_author:.1f}"
 
     def generate(self) :
