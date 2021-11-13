@@ -657,14 +657,14 @@ class GitStatisticsWriter :
                 outputfile.write(f"{year}, {commits_by_year[year]}\n")
 
     def write_lines_and_commits_by_author(self) :
-        lines_by_authors = {}
+        lines_added_by_authors = {}
         commits_by_authors = {}
         limit = self.git_statistics.configuration['max_authors']
         authors_to_write = self.git_statistics.get_authors(limit)
         for author in authors_to_write :
-            lines_by_authors[author] = 0
+            lines_added_by_authors[author] = 0
             commits_by_authors[author] = 0
-        with open('lines_of_code_by_author.csv', 'w', encoding='utf-8') as outputfile1, \
+        with open('lines_of_code_added_by_author.csv', 'w', encoding='utf-8') as outputfile1, \
              open('commits_by_author.csv', 'w', encoding='utf-8') as outputfile2 :
             changes_by_date_by_author = self.git_statistics.get_changes_by_date_by_author()
             outputfile1.write('Stamp, ' + ', '.join(authors_to_write) + '\n')
@@ -677,10 +677,10 @@ class GitStatisticsWriter :
                 outputfile2.write(f"{stamp}, ")
                 for author in set(changes_by_date_by_author[stamp_key].keys()).intersection(
                         authors_to_write) :
-                    lines_by_authors[author] += \
+                    lines_added_by_authors[author] += \
                         changes_by_date_by_author[stamp_key][author]['lines_added']
                     commits_by_authors[author] += 1
-                outputfile1.write(', '.join(map(str, lines_by_authors.values())))
+                outputfile1.write(', '.join(map(str, lines_added_by_authors.values())))
                 outputfile2.write(', '.join(map(str, commits_by_authors.values())))
                 outputfile1.write('\n')
                 outputfile2.write('\n')
