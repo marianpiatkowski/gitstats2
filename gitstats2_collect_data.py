@@ -590,10 +590,6 @@ rev-parse --short {commit_range}"
         self.changes_by_date_by_author[stamp_key][author]['commits'] = \
             self._authors_of_repository[author]['commits']
 
-    def _update_and_accumulate_authors_stats(self) :
-        for author, stats in self._authors_of_repository.items() :
-            self._update_and_accumulate_from(author, stats)
-
     def _collect_revlist(self, repository) :
         # Outputs "<stamp> <revlist>"
         cmd = f"git rev-list --pretty=format:\"%at %T\" {self._get_log_range('HEAD')}"
@@ -613,6 +609,10 @@ rev-parse --short {commit_range}"
             self.files_by_stamp[stamp_key]['files'] = num_files
             self.files_by_stamp[stamp_key]['new_files'] = num_files - prev_num_files
             prev_num_files = num_files
+
+    def _update_and_accumulate_authors_stats(self) :
+        for author, stats in self._authors_of_repository.items() :
+            self._update_and_accumulate_from(author, stats)
 
     def _update_and_accumulate_from(self, author, stats) :
         if author not in self.authors :
