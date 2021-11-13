@@ -700,7 +700,7 @@ class GitStatisticsWriter :
         changes_by_date = self.git_statistics.get_changes_by_date()
         with open('lines_of_code.csv', 'w', encoding='utf-8') as outputfile :
             total_lines = 0
-            outputfile.write('Timestamp, TotalLines\n')
+            outputfile.write('Timestamp, Total Lines\n')
             for stamp_key in sorted(changes_by_date.keys()) :
                 # structure of stamp_key
                 # stamp repository
