@@ -579,8 +579,8 @@ rev-parse --short {commit_range}"
             self.changes_by_date_by_author[stamp_key] = {}
         if author not in self.changes_by_date_by_author[stamp_key] :
             self.changes_by_date_by_author[stamp_key][author] = {}
-        self.changes_by_date_by_author[stamp_key][author]['lines_added'] = \
-            self._authors_of_repository[author]['lines_added']
+        self.changes_by_date_by_author[stamp_key][author]['lines_added'] = inserted
+        self.changes_by_date_by_author[stamp_key][author]['lines_removed'] = deleted
         self.changes_by_date_by_author[stamp_key][author]['commits'] = \
             self._authors_of_repository[author]['commits']
 
@@ -662,24 +662,26 @@ class GitStatisticsWriter :
         limit = self.git_statistics.configuration['max_authors']
         authors_to_write = self.git_statistics.get_authors(limit)
         for author in authors_to_write :
-            lines_by_authors[author] = '0'
-            commits_by_authors[author] = '0'
+            lines_by_authors[author] = 0
+            commits_by_authors[author] = 0
         with open('lines_of_code_by_author.csv', 'w', encoding='utf-8') as outputfile1, \
              open('commits_by_author.csv', 'w', encoding='utf-8') as outputfile2 :
             changes_by_date_by_author = self.git_statistics.get_changes_by_date_by_author()
             outputfile1.write('Stamp, ' + ', '.join(authors_to_write) + '\n')
             outputfile2.write('Stamp, ' + ', '.join(authors_to_write) + '\n')
-            for stamp in sorted(changes_by_date_by_author.keys()) :
+            for stamp_key in sorted(changes_by_date_by_author.keys()) :
+                # structure of stamp_key
+                # stamp repository
+                stamp = stamp_key.split()[0]
                 outputfile1.write(f"{stamp}, ")
                 outputfile2.write(f"{stamp}, ")
-                for author in set(changes_by_date_by_author[stamp].keys()).intersection(
+                for author in set(changes_by_date_by_author[stamp_key].keys()).intersection(
                         authors_to_write) :
-                    lines_by_authors[author] = \
-                        str(changes_by_date_by_author[stamp][author]['lines_added'])
-                    commits_by_authors[author] = \
-                        str(changes_by_date_by_author[stamp][author]['commits'])
-                outputfile1.write(', '.join(lines_by_authors.values()))
-                outputfile2.write(', '.join(commits_by_authors.values()))
+                    lines_by_authors[author] += \
+                        changes_by_date_by_author[stamp_key][author]['lines_added']
+                    commits_by_authors[author] += 1
+                outputfile1.write(', '.join(map(str, lines_by_authors.values())))
+                outputfile2.write(', '.join(map(str, commits_by_authors.values())))
                 outputfile1.write('\n')
                 outputfile2.write('\n')
 
