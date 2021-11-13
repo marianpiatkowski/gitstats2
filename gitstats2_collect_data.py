@@ -190,7 +190,7 @@ rev-parse --short {commit_range}"
             self._collect_files(repository)
             self._collect_lines_modified(repository)
             self._collect_lines_modified_by_author(repository)
-            self.authors.update(self._authors_of_repository)
+            self._update_and_accumulate_authors_stats()
             os.chdir(prev_dir)
         if not self.configuration['project_name'] :
             self.configuration['project_name'] = ', '.join(repo_names)
@@ -583,6 +583,26 @@ rev-parse --short {commit_range}"
             self._authors_of_repository[author]['lines_added']
         self.changes_by_date_by_author[stamp_key][author]['commits'] = \
             self._authors_of_repository[author]['commits']
+
+    def _update_and_accumulate_authors_stats(self) :
+        for author, stats in self._authors_of_repository.items() :
+            self._update_and_accumulate_from(author, stats)
+
+    def _update_and_accumulate_from(self, author, stats) :
+        if author not in self.authors :
+            self.authors[author] = stats.copy()
+        else :
+            author = self.authors[author]
+            author['last_commit_stamp'] = \
+                max((author['last_commit_stamp'], stats['last_commit_stamp']))
+            author['first_commit_stamp'] = \
+                min((author['first_commit_stamp'], stats['first_commit_stamp']))
+            author['first_active_day'] = \
+                min((author['first_active_day'], stats['first_active_day']))
+            author['active_days'].update(stats['active_days'])
+            author['commits'] += stats['commits']
+            author['lines_added'] += stats['lines_added']
+            author['lines_removed'] += stats['lines_removed']
 
 class GitStatisticsWriter :
     def __init__(self, git_statistics) :
