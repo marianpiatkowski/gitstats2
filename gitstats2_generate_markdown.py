@@ -100,8 +100,40 @@ class RMarkdownFile :
             float(self.git_statistics.get_total_commits())/total_authors
         results['avg_commits_per_author'] = f"{avg_commits_per_author:.1f}"
 
+    def _fill_tags(self, results) :
+        tags = self.git_statistics.tags
+        total_tags = 0
+        tags_table = []
+        for repository in tags.keys() :
+            if not tags[repository] :
+                continue
+            total_tags += len(tags[repository])
+            tags_table.extend(self._fill_tags_table(repository, tags))
+
+        results['total_tags'] = total_tags
+        avg_commits_per_tag = self.git_statistics.get_total_commits()/total_tags
+        results['avg_commits_per_tag'] = f"{avg_commits_per_tag:.2f}"
+
+        df = pd.DataFrame(tags_table, columns=["Repository", "Name", "Date", "Commits", "Authors"])
+        results['tags_table'] = df.to_markdown(index=False, tablefmt="github", numalign="center")
+
+    @staticmethod
+    def _fill_tags_table(repository, tags) :
+        tags_table = []
+        for tagname, tagdetails in tags[repository].items() :
+            tags_row = [repository, tagname]
+            tags_row.append(tagdetails['date'])
+            tags_row.append(tagdetails['commits'])
+            authors_w_commits = []
+            for author, commits in tagdetails['authors'].items() :
+                authors_w_commits.append(f"{author} ({commits})")
+            tags_row.append(', '.join(authors_w_commits))
+            tags_table.append(tags_row)
+        return tags_table
+
     def generate(self) :
         results = self.git_statistics.configuration.copy()
         self._fill_general(results)
+        self._fill_tags(results)
         out = self._template.substitute(results)
         return out
