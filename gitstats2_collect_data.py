@@ -644,14 +644,20 @@ rev-parse --short {commit_range}"
     def _update_lines_by_date_by_author(self, stamp_key, lines_by_author, prev_lines_by_author) :
         self.lines_by_date_by_author[stamp_key] = {}
         lines_by_date_by_author = self.lines_by_date_by_author[stamp_key]
-        for author, lines in lines_by_author.items() :
+        prev_authors = set(prev_lines_by_author.keys())
+        authors = set(lines_by_author.keys())
+        for author in authors.union(prev_authors) :
             lines_by_date_by_author[author] = {}
-            lines_by_date_by_author[author]['lines'] = lines
-            if prev_lines_by_author and author in prev_lines_by_author :
-                lines_by_date_by_author[author]['delta_lines'] = \
-                    lines - prev_lines_by_author[author]
-            else :
-                lines_by_date_by_author[author]['delta_lines'] = lines
+        for author in prev_authors.difference(authors) :
+            lines_by_date_by_author[author]['lines'] = 0
+            lines_by_date_by_author[author]['delta_lines'] = -prev_lines_by_author[author]
+        for author in authors.intersection(prev_authors) :
+            lines_by_date_by_author[author]['lines'] = lines_by_author[author]
+            lines_by_date_by_author[author]['delta_lines'] = \
+                lines_by_author[author] - prev_lines_by_author[author]
+        for author in authors.difference(prev_authors) :
+            lines_by_date_by_author[author]['lines'] = lines_by_author[author]
+            lines_by_date_by_author[author]['delta_lines'] = lines_by_author[author]
 
     def _update_and_accumulate_authors_stats(self) :
         for author, stats in self._authors_of_repository.items() :
