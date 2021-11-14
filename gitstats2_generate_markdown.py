@@ -66,6 +66,13 @@ class RMarkdownFile :
     #     out = self._template.substitute(results)
     #     return out
 
+    def generate(self) :
+        results = self.git_statistics.configuration.copy()
+        self._fill_general(results)
+        self._fill_tags(results)
+        out = self._template.substitute(results)
+        return out
+
     def _fill_general(self, results) :
         datetime_format = '%Y-%m-%d %H:%M:%S'
         results['generation_date'] = datetime.datetime.now().strftime(datetime_format)
@@ -130,10 +137,3 @@ class RMarkdownFile :
             tags_row.append(', '.join(authors_w_commits))
             tags_table.append(tags_row)
         return tags_table
-
-    def generate(self) :
-        results = self.git_statistics.configuration.copy()
-        self._fill_general(results)
-        self._fill_tags(results)
-        out = self._template.substitute(results)
-        return out
