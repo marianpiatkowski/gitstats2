@@ -162,6 +162,7 @@ $total_lines
 Lines of code
 ~~~
 $lines_of_code_png
+$lines_of_code_by_author_png
 
 ### Tags
 

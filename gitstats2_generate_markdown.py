@@ -2,8 +2,10 @@
 import datetime
 import time
 from string import Template
-import matplotlib
 import pandas as pd
+import matplotlib
+import matplotlib.pyplot as plt
+matplotlib.style.use('classic')
 
 class RMarkdownFile :
     def __init__(self, templ, git_statistics) :
@@ -69,6 +71,7 @@ class RMarkdownFile :
     def generate(self) :
         results = self.git_statistics.configuration.copy()
         self._fill_general(results)
+        self._fill_lines(results)
         self._fill_tags(results)
         out = self._template.substitute(results)
         return out
@@ -107,6 +110,44 @@ class RMarkdownFile :
             float(self.git_statistics.get_total_commits())/total_authors
         results['avg_commits_per_author'] = f"{avg_commits_per_author:.1f}"
 
+    def _fill_lines(self, results) :
+        self._plot_lines_of_code()
+        results['lines_of_code_png'] = '![LinesOfCode](lines_of_code.png)'
+        if self.git_statistics.configuration['lines_by_date'] :
+            self._plot_lines_of_code_by_author()
+            results['lines_of_code_by_author_png'] = \
+                '![LinesOfCodeByAuthor](lines_of_code_by_author.png)'
+        else :
+            results['lines_of_code_by_author_png'] = ''
+
+    @staticmethod
+    def _plot_lines_of_code() :
+        data = pd.read_csv('lines_of_code.csv', delimiter=', ', engine='python')
+        plot_data = data.apply(lambda x : [datetime.datetime.fromtimestamp(elem) for elem in x]
+                               if x.name == 'Timestamp' else x)
+        plt.figure(figsize=(16.0, 6.0))
+        plt.plot(plot_data.Timestamp, plot_data['Total Lines'])
+        axes = plt.gca()
+        axes.set_ylabel('Lines')
+        plt.grid(True)
+        plt.savefig("lines_of_code.png")
+        plt.close()
+
+    @staticmethod
+    def _plot_lines_of_code_by_author() :
+        data = pd.read_csv('lines_of_code_by_author.csv', delimiter=', ', engine='python')
+        plot_data = data.apply(lambda x : [datetime.datetime.fromtimestamp(elem) for elem in x]
+                               if x.name == 'Stamp' else x)
+        plt.figure(figsize=(16.0, 6.0))
+        for author in plot_data.columns[1:] :
+            plt.plot(plot_data.Stamp, plot_data[author], label=author)
+        plt.legend(loc='upper left')
+        axes = plt.gca()
+        axes.set_ylabel('Lines')
+        plt.grid(True)
+        plt.savefig("lines_of_code_by_author.png")
+        plt.close()
+
     def _fill_tags(self, results) :
         tags = self.git_statistics.tags
         total_tags = 0
@@ -121,8 +162,8 @@ class RMarkdownFile :
         avg_commits_per_tag = self.git_statistics.get_total_commits()/total_tags
         results['avg_commits_per_tag'] = f"{avg_commits_per_tag:.2f}"
 
-        df = pd.DataFrame(tags_table, columns=["Repository", "Name", "Date", "Commits", "Authors"])
-        results['tags_table'] = df.to_markdown(index=False, tablefmt="github", numalign="center")
+        _df = pd.DataFrame(tags_table, columns=["Repository", "Name", "Date", "Commits", "Authors"])
+        results['tags_table'] = _df.to_markdown(index=False, tablefmt="github", numalign="center")
 
     @staticmethod
     def _fill_tags_table(repository, tags) :
