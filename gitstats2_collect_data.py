@@ -620,7 +620,7 @@ rev-parse --short {commit_range}"
                 stamp_key = ' '.join([timestamp, repository])
                 self._update_files_by_stamp(stamp_key, num_files, prev_num_files)
                 prev_num_files = num_files
-            else :
+            elif self.configuration['lines_by_date'] :
                 commit_hash = line.split()[-1]
                 lines_by_author = self._lines_by_author(file_tree, commit_hash)
                 self._update_lines_by_date_by_author(
@@ -799,6 +799,8 @@ class GitStatisticsWriter :
                 outputfile.write(f"{stamp}, {total_files}\n")
 
     def write_lines_of_code_by_author(self) :
+        if not self.git_statistics.configuration['lines_by_date'] :
+            return
         lines_by_authors = {}
         limit = self.git_statistics.configuration['max_authors']
         authors_to_write = self.git_statistics.get_authors(limit)
@@ -832,7 +834,8 @@ def main(args_orig) :
         'linear_linestats': 1,
         'project_name': '',
         'processes': 8,
-        'start_date': ''
+        'start_date': '',
+        'lines_by_date': False,
     }
     def usage() :
         print(f"""

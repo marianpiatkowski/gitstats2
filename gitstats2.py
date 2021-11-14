@@ -26,7 +26,8 @@ def main(args_orig) :
         'linear_linestats': 1,
         'project_name': '',
         'processes': 8,
-        'start_date': ''
+        'start_date': '',
+        'lines_by_date': False,
     }
     def usage() :
         print(f"""
