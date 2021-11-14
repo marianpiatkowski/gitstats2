@@ -8,6 +8,7 @@ import datetime
 import re
 import calendar
 from collections import namedtuple
+from collections import Counter
 
 if sys.version_info < (3, 6) :
     print("Python 3.6 or higher is required for gitstats2", file=sys.stderr)
@@ -55,6 +56,7 @@ class GitStatisticsData :
         self.changes_by_date_by_author = {}
         self.changes_by_date = {}
         self.files_by_stamp = {}
+        self.lines_by_date_by_author = {}
 
     def reset(self) :
         self.runstart_stamp = float(0.0)
@@ -95,6 +97,7 @@ class GitStatisticsData :
         self.changes_by_date_by_author = {}
         self.changes_by_date = {}
         self.files_by_stamp = {}
+        self.lines_by_date_by_author = {}
 
     def get_runstart_stamp(self) :
         return self.runstart_stamp
@@ -176,6 +179,9 @@ rev-parse --short {commit_range}"
 
     def get_files_by_stamp(self) :
         return self.files_by_stamp
+
+    def get_lines_by_date_by_author(self) :
+        return self.lines_by_date_by_author
 
     def collect(self) :
         self.runstart_stamp = time.time()
@@ -593,22 +599,59 @@ rev-parse --short {commit_range}"
     def _collect_revlist(self, repository) :
         # Outputs "<stamp> <revlist>"
         cmd = f"git rev-list --pretty=format:\"%at %T\" {self._get_log_range('HEAD')}"
-        pipe_out = self._get_pipe_output([cmd, 'grep -v ^commit'])
+        pipe_out = self._get_pipe_output([cmd])
         lines = pipe_out.strip().split('\n')
         lines.reverse()
+        # Outputs:
+        # <timestamp> <rev-list>
+        # commit <sha1>
+        file_tree = []
         prev_num_files = 0
+        prev_lines_by_author = Counter()
         for line in lines :
-            timestamp, rev = line.split()
-            pipe_out = self._get_pipe_output([f"git ls-tree -r --name-only \"{rev}\""])
-            file_tree = pipe_out.split('\n')
-            num_files = len(file_tree)
-            # meld stamp and repository into a single key for self.files_by_stamp
-            stamp_key = ' '.join([timestamp, repository])
-            if stamp_key not in self.files_by_stamp :
-                self.files_by_stamp[stamp_key] = {}
-            self.files_by_stamp[stamp_key]['files'] = num_files
-            self.files_by_stamp[stamp_key]['new_files'] = num_files - prev_num_files
-            prev_num_files = num_files
+            if not line :
+                continue
+            if re.search('commit', line) is None :
+                timestamp, rev = line.split()
+                pipe_out = self._get_pipe_output([f"git ls-tree -r --name-only \"{rev}\""])
+                file_tree = pipe_out.split('\n')
+                num_files = len(file_tree)
+                # meld stamp and repository into a single key for self.files_by_stamp
+                stamp_key = ' '.join([timestamp, repository])
+                self._update_files_by_stamp(stamp_key, num_files, prev_num_files)
+                prev_num_files = num_files
+            else :
+                commit_hash = line.split()[-1]
+                lines_by_author = self._lines_by_author(file_tree, commit_hash)
+                self._update_lines_by_date_by_author(
+                    stamp_key, lines_by_author, prev_lines_by_author)
+                prev_lines_by_author = lines_by_author
+
+    def _update_files_by_stamp(self, stamp_key, num_files, prev_num_files) :
+        if stamp_key not in self.files_by_stamp :
+            self.files_by_stamp[stamp_key] = {}
+        self.files_by_stamp[stamp_key]['files'] = num_files
+        self.files_by_stamp[stamp_key]['delta_files'] = num_files - prev_num_files
+
+    def _lines_by_author(self, file_tree, commit_hash) :
+        lines_by_author = Counter()
+        for revfile in file_tree :
+            cmd = f"git blame --line-porcelain {commit_hash} -- {revfile}"
+            pipe_out = self._get_pipe_output([cmd, "sed -n 's/^author //p'"], quiet=True)
+            lines_by_author += Counter(pipe_out.split('\n'))
+        return lines_by_author
+
+    def _update_lines_by_date_by_author(self, stamp_key, lines_by_author, prev_lines_by_author) :
+        self.lines_by_date_by_author[stamp_key] = {}
+        lines_by_date_by_author = self.lines_by_date_by_author[stamp_key]
+        for author, lines in lines_by_author.items() :
+            lines_by_date_by_author[author] = {}
+            lines_by_date_by_author[author]['lines'] = lines
+            if prev_lines_by_author and author in prev_lines_by_author :
+                lines_by_date_by_author[author]['delta_lines'] = \
+                    lines - prev_lines_by_author[author]
+            else :
+                lines_by_date_by_author[author]['delta_lines'] = lines
 
     def _update_and_accumulate_authors_stats(self) :
         for author, stats in self._authors_of_repository.items() :
@@ -646,6 +689,7 @@ class GitStatisticsWriter :
         self.write_domains()
         self.write_lines_of_code()
         self.write_files_by_date()
+        self.write_lines_of_code_by_author()
         os.chdir(prev_dir)
 
     def write_hour_of_day(self) :
@@ -745,8 +789,29 @@ class GitStatisticsWriter :
                 # structure of stamp_key
                 # stamp repository
                 stamp = stamp_key.split()[0]
-                total_files += files_by_stamp[stamp_key]['new_files']
+                total_files += files_by_stamp[stamp_key]['delta_files']
                 outputfile.write(f"{stamp}, {total_files}\n")
+
+    def write_lines_of_code_by_author(self) :
+        lines_by_authors = {}
+        limit = self.git_statistics.configuration['max_authors']
+        authors_to_write = self.git_statistics.get_authors(limit)
+        for author in authors_to_write :
+            lines_by_authors[author] = 0
+        with open('lines_of_code_by_author.csv', 'w', encoding='utf-8') as outputfile :
+            lines_by_date_by_author = self.git_statistics.get_lines_by_date_by_author()
+            outputfile.write('Stamp, ' + ', '.join(authors_to_write) + '\n')
+            for stamp_key in sorted(lines_by_date_by_author.keys()) :
+                # structure of stamp_key
+                # stamp repository
+                stamp = stamp_key.split()[0]
+                outputfile.write(f"{stamp}, ")
+                for author in set(lines_by_date_by_author[stamp_key].keys()).intersection(
+                        authors_to_write) :
+                    lines_by_authors[author] += \
+                        lines_by_date_by_author[stamp_key][author]['delta_lines']
+                outputfile.write(', '.join(map(str, lines_by_authors.values())))
+                outputfile.write('\n')
 
 def main(args_orig) :
     time_start = time.time()
