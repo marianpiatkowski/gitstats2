@@ -2,16 +2,15 @@
 import datetime
 import time
 from string import Template
-from dateutil import rrule
 import pandas as pd
 import matplotlib
-import matplotlib.pyplot as plt
-matplotlib.style.use('classic')
+from gitstats2_plot_graphs import GitStatisticsGraphs
 
 class RMarkdownFile :
     def __init__(self, templ, git_statistics) :
         self._template = Template(templ)
         self.git_statistics = git_statistics
+        self.statistics_viewer = GitStatisticsGraphs(git_statistics)
 
     # def generate(self) :
     #     results = {
@@ -115,33 +114,11 @@ class RMarkdownFile :
     def _fill_activity(self, results) :
         activity_period_weeks = 32
         results['activity_period_weeks'] = activity_period_weeks
-        self._plot_weekly_activity(activity_period_weeks)
+        self.statistics_viewer.plot_weekly_activity(activity_period_weeks)
         results['weekly_activity_png'] = '![WeeklyActivity](weekly_activity.png)'
         self._fill_hour_of_day_table(results)
-        self._plot_hour_of_day()
+        self.statistics_viewer.plot_hour_of_day()
         results['hour_of_day_png'] = '![HourOfDay](hour_of_day.png)'
-
-    def _plot_weekly_activity(self, activity_period_weeks) :
-        weeks = []
-        commits = []
-        now = datetime.datetime.now()
-        begin = now - datetime.timedelta(weeks=activity_period_weeks)
-        for date in rrule.rrule(rrule.WEEKLY, dtstart=begin, until=now) :
-            weeks.append(date)
-            yyw = date.strftime('%Y-%W')
-            commits.append(self.git_statistics.activity_by_year_week.get(yyw, 0))
-        plt.figure(figsize=(16.0, 6.0))
-        plt.fill_between(weeks, commits, step='post')
-        plt.xticks(
-            weeks,
-            map(lambda el : el.strftime('%Y-%W'), weeks),
-            rotation=90)
-        axes = plt.gca()
-        axes.set_ylabel('Commits')
-        plt.grid(True)
-        plt.tight_layout()
-        plt.savefig("weekly_activity.png")
-        plt.close()
 
     def _fill_hour_of_day_table(self, results) :
         activity_by_hour_of_day = self.git_statistics.get_activity_by_hour_of_day()
@@ -155,59 +132,15 @@ class RMarkdownFile :
         results['hour_of_day_table'] = \
             df_transposed.to_markdown(tablefmt="github", numalign="center")
 
-    @staticmethod
-    def _plot_hour_of_day() :
-        plot_data = pd.read_csv('hour_of_day.csv', delimiter=', ', engine='python')
-        plt.figure(figsize=(16.0, 6.0))
-        plt.fill_between(plot_data.Hour, plot_data.Commits, step='post')
-        axes = plt.gca()
-        axes.set_ylabel('Commits')
-        axes.set_xlim(0,24)
-        axes.set_xticks(range(0,24))
-        plt.grid(True)
-        plt.tight_layout()
-        plt.savefig("hour_of_day.png")
-        plt.close()
-
     def _fill_lines(self, results) :
-        self._plot_lines_of_code()
+        self.statistics_viewer.plot_lines_of_code()
         results['lines_of_code_png'] = '![LinesOfCode](lines_of_code.png)'
         if self.git_statistics.configuration['lines_by_date'] :
-            self._plot_lines_of_code_by_author()
+            self.statistics_viewer.plot_lines_of_code_by_author()
             results['lines_of_code_by_author_png'] = \
                 '![LinesOfCodeByAuthor](lines_of_code_by_author.png)'
         else :
             results['lines_of_code_by_author_png'] = ''
-
-    @staticmethod
-    def _plot_lines_of_code() :
-        data = pd.read_csv('lines_of_code.csv', delimiter=', ', engine='python')
-        plot_data = data.apply(lambda x : [datetime.datetime.fromtimestamp(elem) for elem in x]
-                               if x.name == 'Timestamp' else x)
-        plt.figure(figsize=(16.0, 6.0))
-        plt.plot(plot_data.Timestamp, plot_data['Total Lines'])
-        axes = plt.gca()
-        axes.set_ylabel('Lines')
-        plt.grid(True)
-        plt.tight_layout()
-        plt.savefig("lines_of_code.png")
-        plt.close()
-
-    @staticmethod
-    def _plot_lines_of_code_by_author() :
-        data = pd.read_csv('lines_of_code_by_author.csv', delimiter=', ', engine='python')
-        plot_data = data.apply(lambda x : [datetime.datetime.fromtimestamp(elem) for elem in x]
-                               if x.name == 'Stamp' else x)
-        plt.figure(figsize=(16.0, 6.0))
-        for author in plot_data.columns[1:] :
-            plt.plot(plot_data.Stamp, plot_data[author], label=author)
-        plt.legend(loc='upper left')
-        axes = plt.gca()
-        axes.set_ylabel('Lines')
-        plt.grid(True)
-        plt.tight_layout()
-        plt.savefig("lines_of_code_by_author.png")
-        plt.close()
 
     def _fill_tags(self, results) :
         tags = self.git_statistics.tags
