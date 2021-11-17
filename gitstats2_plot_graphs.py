@@ -19,12 +19,13 @@ class GitStatisticsGraphs :
             weeks.append(date)
             yyw = date.strftime('%Y-%W')
             commits.append(self.git_statistics.activity_by_year_week.get(yyw, 0))
+        data = { 'Weeks' : weeks, 'Commits' : commits }
+        plot_data = pd.DataFrame(data)
+        plot_data.set_index('Weeks')
         plt.figure(figsize=(16.0, 6.0))
-        plt.fill_between(weeks, commits, step='post')
-        plt.xticks(
-            weeks,
-            map(lambda el : el.strftime('%Y-%W'), weeks),
-            rotation=90)
+        plot_data['Commits'].plot(kind='bar', legend=None)
+        locs, _labels = plt.xticks()
+        plt.xticks(locs, map(lambda el : el.strftime('%Y-%W'), weeks), rotation=90)
         axes = plt.gca()
         axes.set_ylabel('Commits')
         plt.grid(True)
@@ -36,14 +37,25 @@ class GitStatisticsGraphs :
     def plot_hour_of_day() :
         plot_data = pd.read_csv('hour_of_day.csv', delimiter=', ', engine='python')
         plt.figure(figsize=(16.0, 6.0))
-        plt.fill_between(plot_data.Hour, plot_data.Commits, step='post')
+        plot_data['Commits'].plot(kind='bar', legend=None)
+        plt.xticks(rotation=0)
         axes = plt.gca()
         axes.set_ylabel('Commits')
-        axes.set_xlim(0,24)
-        axes.set_xticks(range(0,24))
         plt.grid(True)
-        plt.tight_layout()
         plt.savefig("hour_of_day.png")
+        plt.close()
+
+    @staticmethod
+    def plot_day_of_week() :
+        plot_data = pd.read_csv('day_of_week.csv', delimiter=', ', engine='python')
+        plt.figure(figsize=(16.0, 6.0))
+        plot_data[['Weekday', 'Commits']].plot(kind='bar', legend=None)
+        locs, _labels = plt.xticks()
+        plt.xticks(locs, ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'), rotation=0)
+        axes = plt.gca()
+        axes.set_ylabel('Commits')
+        plt.grid(True)
+        plt.savefig("day_of_week.png")
         plt.close()
 
     @staticmethod
