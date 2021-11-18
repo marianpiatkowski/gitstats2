@@ -52,6 +52,7 @@ class RMarkdownFile :
     #         'list_of_authors_table' : '',
     #         'lines_of_code_by_author_png' : '',
     #         'commits_by_author_png' : '',
+    #         'lines_of_code_added_by_author_png' : '',
     #         'author_of_month_table' : '',
     #         'author_of_year_table' : '',
     #         'domains_png' : '',

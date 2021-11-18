@@ -103,7 +103,7 @@ List of Authors
 $list_of_authors_table
 
 ~~~
-Cumulated added lines of code per author
+Lines of code per author
 ~~~
 $lines_of_code_by_author_png
 
@@ -111,6 +111,11 @@ $lines_of_code_by_author_png
 Commits per author
 ~~~
 $commits_by_author_png
+
+~~~
+Cumulated added lines of code per author
+~~~
+$lines_of_code_added_by_author_png
 
 ~~~
 Author of month

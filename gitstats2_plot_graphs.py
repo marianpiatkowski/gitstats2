@@ -92,17 +92,16 @@ class GitStatisticsGraphs :
         plt.close()
 
     @staticmethod
-    def plot_lines_of_code() :
-        data = pd.read_csv('lines_of_code.csv', delimiter=', ', engine='python')
-        plot_data = data.apply(lambda x : [datetime.datetime.fromtimestamp(elem) for elem in x]
-                               if x.name == 'Timestamp' else x)
+    def plot_commits_by_year() :
+        plot_data = pd.read_csv('commits_by_year.csv', delimiter=', ', engine='python')
         plt.figure(figsize=(16.0, 6.0))
-        plt.plot(plot_data.Timestamp, plot_data['Total Lines'])
+        plot_data['Commits'].plot(kind='bar', legend=None)
+        locs, _labels = plt.xticks()
+        plt.xticks(locs, plot_data.Year, rotation=90)
         axes = plt.gca()
-        axes.set_ylabel('Lines')
+        axes.set_ylabel('Commits')
         plt.grid(True)
-        plt.tight_layout()
-        plt.savefig("lines_of_code.png")
+        plt.savefig("commits_by_year.png")
         plt.close()
 
     @staticmethod
@@ -117,6 +116,76 @@ class GitStatisticsGraphs :
         axes = plt.gca()
         axes.set_ylabel('Lines')
         plt.grid(True)
-        plt.tight_layout()
         plt.savefig("lines_of_code_by_author.png")
+        plt.close()
+
+    @staticmethod
+    def plot_commits_by_author() :
+        data = pd.read_csv('commits_by_author.csv', delimiter=', ', engine='python')
+        plot_data = data.apply(lambda x : [datetime.datetime.fromtimestamp(elem) for elem in x]
+                               if x.name == 'Stamp' else x)
+        plt.figure(figsize=(16.0, 6.0))
+        for author in plot_data.columns[1:] :
+            plt.plot(plot_data.Stamp, plot_data[author], label=author)
+        plt.legend(loc='upper left')
+        axes = plt.gca()
+        axes.set_ylabel('Commits')
+        plt.grid(True)
+        plt.savefig("commits_by_author.png")
+        plt.close()
+
+    @staticmethod
+    def plot_lines_of_code_added_by_author() :
+        data = pd.read_csv('lines_of_code_added_by_author.csv', delimiter=', ', engine='python')
+        plot_data = data.apply(lambda x : [datetime.datetime.fromtimestamp(elem) for elem in x]
+                               if x.name == 'Stamp' else x)
+        plt.figure(figsize=(16.0, 6.0))
+        for author in plot_data.columns[1:] :
+            plt.plot(plot_data.Stamp, plot_data[author], label=author)
+        plt.legend(loc='upper left')
+        axes = plt.gca()
+        axes.set_ylabel('Lines')
+        plt.grid(True)
+        plt.savefig("lines_of_code_added_by_author.png")
+        plt.close()
+
+    @staticmethod
+    def plot_domains() :
+        plot_data = pd.read_csv('domains.csv', delimiter=', ', engine='python')
+        plot_data.set_index('Ranking')
+        plt.figure(figsize=(16.0, 6.0))
+        plot_data['Commits'].plot(kind='bar', legend=None) # pylint: disable=unsubscriptable-object
+        locs, _labels = plt.xticks()
+        plt.xticks(locs, plot_data.Domain, rotation=0) # #pylint: disable=E1101
+        axes = plt.gca()
+        axes.set_ylabel('Commits')
+        plt.grid(True)
+        plt.savefig("domains.png")
+        plt.close()
+
+    @staticmethod
+    def plot_files_by_date() :
+        data = pd.read_csv('files_by_date.csv', delimiter=', ', engine='python')
+        plot_data = data.apply(lambda x : [datetime.datetime.fromtimestamp(elem) for elem in x]
+                               if x.name == 'Timestamp' else x)
+        plt.figure(figsize=(16.0, 6.0))
+        plt.plot(plot_data.Timestamp, plot_data['Total files'])
+        axes = plt.gca()
+        axes.set_ylabel('Files')
+        plt.grid(True)
+        plt.savefig("files_by_date.png")
+        plt.close()
+
+    @staticmethod
+    def plot_lines_of_code() :
+        data = pd.read_csv('lines_of_code.csv', delimiter=', ', engine='python')
+        plot_data = data.apply(lambda x : [datetime.datetime.fromtimestamp(elem) for elem in x]
+                               if x.name == 'Timestamp' else x)
+        plt.figure(figsize=(16.0, 6.0))
+        plt.plot(plot_data.Timestamp, plot_data['Total Lines'])
+        axes = plt.gca()
+        axes.set_ylabel('Lines')
+        plt.grid(True)
+        plt.tight_layout()
+        plt.savefig("lines_of_code.png")
         plt.close()
