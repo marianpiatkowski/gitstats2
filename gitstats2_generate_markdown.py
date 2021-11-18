@@ -73,6 +73,8 @@ class RMarkdownFile :
         results = self.git_statistics.configuration.copy()
         self._fill_general(results)
         self._fill_activity(results)
+        self._fill_authors(results)
+        self._fill_files(results)
         self._fill_lines(results)
         self._fill_tags(results)
         out = self._template.substitute(results)
@@ -126,6 +128,8 @@ class RMarkdownFile :
         results['month_of_year_png'] = '![MonthOfYear](month_of_year.png)'
         self.statistics_viewer.plot_commits_by_year_month()
         results['commits_by_year_month_png'] = '![CommitsByYearMonth](commits_by_year_month.png)'
+        self.statistics_viewer.plot_commits_by_year()
+        results['commits_by_year_png'] = '![CommitsByYear](commits_by_year.png)'
 
     def _fill_hour_of_day_table(self, results) :
         activity_by_hour_of_day = self.git_statistics.get_activity_by_hour_of_day()
@@ -138,6 +142,22 @@ class RMarkdownFile :
         df_transposed = _df.transpose()
         results['hour_of_day_table'] = \
             df_transposed.to_markdown(tablefmt="github", numalign="center")
+
+    def _fill_authors(self, results) :
+        self.statistics_viewer.plot_lines_of_code_by_author()
+        results['lines_of_code_by_author_png'] = \
+            '![LinesOfCodeByAuthor](lines_of_code_by_author.png'
+        self.statistics_viewer.plot_commits_by_author()
+        results['commits_by_author_png'] = '![CommitsByAuthor](commits_by_author.png)'
+        self.statistics_viewer.plot_lines_of_code_added_by_author()
+        results['lines_of_code_added_by_author_png'] = \
+            '![LinesOfCodeAddedByAuthor](lines_of_code_added_by_author.png)'
+        self.statistics_viewer.plot_domains()
+        results['domains_png'] = '![Domains](domains.png)'
+
+    def _fill_files(self, results) :
+        self.statistics_viewer.plot_files_by_date()
+        results['files_by_date_png'] = '![FilesByDate](files_by_date.png)'
 
     def _fill_lines(self, results) :
         self.statistics_viewer.plot_lines_of_code()
