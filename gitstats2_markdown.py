@@ -70,7 +70,7 @@ $day_of_week_table
 ~~~
 Hour of week
 ~~~
-$hour_of_week_png
+$hour_of_week_table
 
 ~~~
 Month of year

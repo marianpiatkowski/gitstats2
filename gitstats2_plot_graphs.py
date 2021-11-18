@@ -11,14 +11,11 @@ class GitStatisticsGraphs :
         self.git_statistics = git_statistics
 
     def plot_weekly_activity(self, activity_period_weeks) :
-        weeks = []
-        commits = []
+        activity_by_year_week = self.git_statistics.activity_by_year_week
         now = datetime.datetime.now()
         begin = now - datetime.timedelta(weeks=activity_period_weeks)
-        for date in rrule.rrule(rrule.WEEKLY, dtstart=begin, until=now) :
-            weeks.append(date)
-            yyw = date.strftime('%Y-%W')
-            commits.append(self.git_statistics.activity_by_year_week.get(yyw, 0))
+        weeks = tuple(rrule.rrule(rrule.WEEKLY, dtstart=begin, until=now))
+        commits = map(lambda el : activity_by_year_week.get(el.strftime('%Y-%W'), 0), weeks)
         data = { 'Weeks' : weeks, 'Commits' : commits }
         plot_data = pd.DataFrame(data)
         plot_data.set_index('Weeks')
@@ -56,6 +53,42 @@ class GitStatisticsGraphs :
         axes.set_ylabel('Commits')
         plt.grid(True)
         plt.savefig("day_of_week.png")
+        plt.close()
+
+    @staticmethod
+    def plot_month_of_year() :
+        plot_data = pd.read_csv('month_of_year.csv', delimiter=', ', engine='python')
+        plt.figure(figsize=(16.0, 6.0))
+        plot_data['Commits'].plot(kind='bar', legend=None)
+        locs, _labels = plt.xticks()
+        plt.xticks(locs, plot_data.Month, rotation=0)
+        axes = plt.gca()
+        axes.set_ylabel('Commits')
+        plt.grid(True)
+        plt.savefig("month_of_year.png")
+        plt.close()
+
+    def plot_commits_by_year_month(self) :
+        commits_by_month = self.git_statistics.get_commits_by_month()
+        begin_yymm = min(commits_by_month.keys())
+        begin_date = datetime.datetime.strptime(begin_yymm, '%Y-%m')
+        begin_date -= datetime.timedelta(days=31)
+        end_yymm = max(commits_by_month.keys())
+        end_date = datetime.datetime.strptime(end_yymm, '%Y-%m')
+        end_date += datetime.timedelta(days=31)
+        year_months = tuple(rrule.rrule(rrule.MONTHLY, dtstart=begin_date, until=end_date))
+        commits = map(lambda el : commits_by_month.get(el.strftime('%Y-%m'), 0), year_months)
+        plot_data = { 'Year-Month' : year_months, 'Commits' : list(commits) }
+        plt.figure(figsize=(16.0, 6.0))
+        plt.fill_between(plot_data['Year-Month'], plot_data['Commits'], step='mid')
+        axes = plt.gca()
+        axes.set_ylabel('Commits')
+        minor_locator = matplotlib.dates.DayLocator(bymonthday=[1])
+        axes.xaxis.set_minor_locator(minor_locator)
+        axes.tick_params(which='minor', length=5)
+        axes.tick_params(which='major', length=7)
+        plt.grid(True)
+        plt.savefig("commits_by_year_month.png")
         plt.close()
 
     @staticmethod

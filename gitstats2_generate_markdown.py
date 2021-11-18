@@ -121,6 +121,10 @@ class RMarkdownFile :
         results['hour_of_day_png'] = '![HourOfDay](hour_of_day.png)'
         self.statistics_viewer.plot_day_of_week()
         results['day_of_week_png'] = '![DayOfWeek](day_of_week.png)'
+        self.statistics_viewer.plot_month_of_year()
+        results['month_of_year_png'] = '![MonthOfYear](month_of_year.png)'
+        self.statistics_viewer.plot_commits_by_year_month()
+        results['commits_by_year_month_png'] = '![CommitsByYearMonth](commits_by_year_month.png)'
 
     def _fill_hour_of_day_table(self, results) :
         activity_by_hour_of_day = self.git_statistics.get_activity_by_hour_of_day()
