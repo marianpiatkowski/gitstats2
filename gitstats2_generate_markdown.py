@@ -144,9 +144,6 @@ class RMarkdownFile :
             df_transposed.to_markdown(tablefmt="github", numalign="center")
 
     def _fill_authors(self, results) :
-        self.statistics_viewer.plot_lines_of_code_by_author()
-        results['lines_of_code_by_author_png'] = \
-            '![LinesOfCodeByAuthor](lines_of_code_by_author.png'
         self.statistics_viewer.plot_commits_by_author()
         results['commits_by_author_png'] = '![CommitsByAuthor](commits_by_author.png)'
         self.statistics_viewer.plot_lines_of_code_added_by_author()

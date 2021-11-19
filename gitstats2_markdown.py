@@ -103,11 +103,6 @@ List of Authors
 $list_of_authors_table
 
 ~~~
-Lines of code per author
-~~~
-$lines_of_code_by_author_png
-
-~~~
 Commits per author
 ~~~
 $commits_by_author_png
