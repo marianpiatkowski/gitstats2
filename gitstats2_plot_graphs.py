@@ -154,9 +154,11 @@ class GitStatisticsGraphs :
         plot_data = pd.read_csv('domains.csv', delimiter=', ', engine='python')
         plot_data.set_index('Ranking')
         plt.figure(figsize=(16.0, 6.0))
-        plot_data['Commits'].plot(kind='bar', legend=None) # pylint: disable=unsubscriptable-object
+        # pylint: disable=unsubscriptable-object
+        plot_data['Commits'].plot(kind='bar', legend=None)
         locs, _labels = plt.xticks()
-        plt.xticks(locs, plot_data.Domain, rotation=0) # #pylint: disable=E1101
+        # pylint: disable=E1101
+        plt.xticks(locs, plot_data.Domain, rotation=0)
         axes = plt.gca()
         axes.set_ylabel('Commits')
         plt.grid(True)

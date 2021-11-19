@@ -1,6 +1,7 @@
 # -*- python-indent-offset: 4 -*-
 import datetime
 import time
+import calendar
 from string import Template
 import pandas as pd
 import matplotlib
@@ -124,12 +125,18 @@ class RMarkdownFile :
         results['hour_of_day_png'] = '![HourOfDay](hour_of_day.png)'
         self.statistics_viewer.plot_day_of_week()
         results['day_of_week_png'] = '![DayOfWeek](day_of_week.png)'
+        self._fill_day_of_week_table(results)
+        self._fill_hour_of_week_table(results)
         self.statistics_viewer.plot_month_of_year()
         results['month_of_year_png'] = '![MonthOfYear](month_of_year.png)'
+        self._fill_month_of_year_table(results)
         self.statistics_viewer.plot_commits_by_year_month()
         results['commits_by_year_month_png'] = '![CommitsByYearMonth](commits_by_year_month.png)'
+        self._fill_commits_by_year_month_table(results)
         self.statistics_viewer.plot_commits_by_year()
         results['commits_by_year_png'] = '![CommitsByYear](commits_by_year.png)'
+        self._fill_commits_by_year_table(results)
+        self._fill_commits_by_timezone_table(results)
 
     def _fill_hour_of_day_table(self, results) :
         activity_by_hour_of_day = self.git_statistics.get_activity_by_hour_of_day()
@@ -142,6 +149,74 @@ class RMarkdownFile :
         df_transposed = _df.transpose()
         results['hour_of_day_table'] = \
             df_transposed.to_markdown(tablefmt="github", numalign="center")
+
+    @staticmethod
+    def _fill_day_of_week_table(results) :
+        data = pd.read_csv('day_of_week.csv', delimiter=', ', engine='python', index_col='Weekday')
+        total_commits = sum(data.Commits)
+        # pylint: disable=E1136 disable=E1137
+        data['Commits'] = \
+            data['Commits'].map(lambda el : f"{el} ({(100*el/total_commits):.2f}%)")
+        # pylint: disable=E1101
+        data_transposed = data.transpose()
+        results['day_of_week_table'] = \
+            data_transposed.to_markdown(tablefmt="github", numalign="center")
+
+    def _fill_hour_of_week_table(self, results) :
+        activity_by_hour_of_week = self.git_statistics.get_activity_by_hour_of_week()
+        table = [ [activity_by_hour_of_week[weekday].get(hour, 0) for hour in range(0, 24)]
+                  for weekday in calendar.Calendar().iterweekdays()]
+        data = pd.DataFrame(table, index=calendar.day_abbr, columns=range(0, 24))
+        results['hour_of_week_table'] = data.to_markdown(tablefmt="github", numalign="center")
+
+    @staticmethod
+    def _fill_month_of_year_table(results) :
+        data = pd.read_csv('month_of_year.csv', delimiter=', ', engine='python', index_col='Month')
+        total_commits = sum(data.Commits)
+        # pylint: disable=E1136 disable=E1137
+        data['Commits'] = data['Commits'].map(lambda el : f"{el} ({(100*el/total_commits):.2f}%)")
+        # pylint: disable=E1101
+        data_transposed = data.transpose()
+        results['month_of_year_table'] = \
+            data_transposed.to_markdown(tablefmt="github", numalign="center")
+
+    def _fill_commits_by_year_month_table(self, results) :
+        commits_by_month = self.git_statistics.get_commits_by_month()
+        lines_added_by_month = self.git_statistics.get_lines_added_by_month()
+        lines_removed_by_month = self.git_statistics.get_lines_removed_by_month()
+        table = []
+        for yymm in sorted(commits_by_month.keys(), reverse=True) :
+            row = [yymm, commits_by_month[yymm],
+                   lines_added_by_month.get(yymm, 0), lines_removed_by_month.get(yymm, 0)]
+            table.append(row)
+        data = pd.DataFrame(table, columns=['Month', 'Commits', 'Lines added', 'Lines removed'])
+        results['commits_by_year_month_table'] = \
+            data.to_markdown(index=False, tablefmt="github", numalign="center")
+
+    def _fill_commits_by_year_table(self, results) :
+        commits_by_year = self.git_statistics.get_commits_by_year()
+        lines_added_by_year = self.git_statistics.get_lines_added_by_year()
+        lines_removed_by_year = self.git_statistics.get_lines_removed_by_year()
+        total_commits = sum(commits_by_year.values())
+        table = []
+        for year in sorted(commits_by_year.keys(), reverse=True) :
+            commits = commits_by_year[year]
+            row = [year, f"{commits} ({(100*commits/total_commits):.2f}%)",
+                   lines_added_by_year.get(year, 0), lines_removed_by_year.get(year, 0)]
+            table.append(row)
+        data = pd.DataFrame(
+            table,
+            columns=['Year', 'Commits (% of all)', 'Lines added', 'Lines removed'])
+        results['commits_by_year_table'] = \
+            data.to_markdown(index=False, tablefmt="github", numalign="center")
+
+    def _fill_commits_by_timezone_table(self, results) :
+        commits_by_timezone = self.git_statistics.get_commits_by_timezone()
+        table = [ [timezone, commits_by_timezone[timezone]]
+                  for timezone in sorted(commits_by_timezone.keys())]
+        data = pd.DataFrame(table, columns=['Timezone', 'Commits'])
+        results['commits_by_timezone_table'] = \
+            data.to_markdown(index=False, tablefmt="github", numalign="center")
 
     def _fill_authors(self, results) :
         self.statistics_viewer.plot_commits_by_author()

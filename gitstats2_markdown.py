@@ -64,8 +64,8 @@ $hour_of_day_png
 ~~~
 Day of week
 ~~~
-$day_of_week_png
 $day_of_week_table
+$day_of_week_png
 
 ~~~
 Hour of week
@@ -75,19 +75,21 @@ $hour_of_week_table
 ~~~
 Month of year
 ~~~
-$month_of_year_png
 $month_of_year_table
+$month_of_year_png
 
 ~~~
 Commits by year/month
 ~~~
 $commits_by_year_month_png
+
 $commits_by_year_month_table
 
 ~~~
 Commits by year
 ~~~
 $commits_by_year_png
+
 $commits_by_year_table
 
 ~~~

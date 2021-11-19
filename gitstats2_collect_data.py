@@ -183,6 +183,24 @@ rev-parse --short {commit_range}"
     def get_lines_by_date_by_author(self) :
         return self.lines_by_date_by_author
 
+    def get_activity_by_hour_of_week(self) :
+        return self.activity_by_hour_of_week
+
+    def get_lines_added_by_month(self) :
+        return self.lines_added_by_month
+
+    def get_lines_removed_by_month(self) :
+        return self.lines_removed_by_month
+
+    def get_lines_added_by_year(self) :
+        return self.lines_added_by_year
+
+    def get_lines_removed_by_year(self) :
+        return self.lines_removed_by_year
+
+    def get_commits_by_timezone(self) :
+        return self.commits_by_timezone
+
     def collect(self) :
         self.runstart_stamp = time.time()
         repo_names = []
