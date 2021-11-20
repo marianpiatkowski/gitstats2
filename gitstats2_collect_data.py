@@ -168,11 +168,8 @@ rev-parse --short {commit_range}"
         res.reverse()
         return res[:limit]
 
-    def get_domains_by_commits(self) :
-        return self._get_keys_sorted_by_value_key(self.domains, 'commits')
-
-    def get_domain_info(self, domain) :
-        return self.domains[domain]
+    def get_domains_sorted_by_commits(self, **kwargs) :
+        return sorted(self.domains.items(), key=lambda el : el[1]['commits'], **kwargs)
 
     def get_changes_by_date(self) :
         return self.changes_by_date
@@ -200,6 +197,12 @@ rev-parse --short {commit_range}"
 
     def get_commits_by_timezone(self) :
         return self.commits_by_timezone
+
+    def get_author_of_month(self) :
+        return self.author_of_month
+
+    def get_author_of_year(self) :
+        return self.author_of_year
 
     def collect(self) :
         self.runstart_stamp = time.time()
@@ -781,15 +784,14 @@ class GitStatisticsWriter :
                 outputfile2.write('\n')
 
     def write_domains(self) :
-        domains_by_commits = self.git_statistics.get_domains_by_commits()
-        domains_by_commits.reverse()
+        domains = self.git_statistics.get_domains_sorted_by_commits(reverse=True)
         with open('domains.csv', 'w', encoding='utf-8') as outputfile :
             outputfile.write('Domain, Ranking, Commits\n')
-            for i, domain in enumerate(domains_by_commits, 1) :
+            for i, domain_info in enumerate(domains, 1) :
+                domain, info = domain_info
                 if i > self.git_statistics.configuration['max_domains'] :
                     break
-                domain_info = self.git_statistics.get_domain_info(domain)
-                outputfile.write(f"{domain}, {i}, {domain_info['commits']}\n")
+                outputfile.write(f"{domain}, {i}, {info['commits']}\n")
 
     def write_lines_of_code(self) :
         changes_by_date = self.git_statistics.get_changes_by_date()

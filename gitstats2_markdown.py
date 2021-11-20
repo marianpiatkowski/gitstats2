@@ -104,6 +104,8 @@ List of Authors
 ~~~
 $list_of_authors_table
 
+$more_authors_list
+
 ~~~
 Commits per author
 ~~~
@@ -128,6 +130,7 @@ $author_of_year_table
 Commits by domains
 ~~~
 $domains_png
+
 $domains_table
 
 ### Files

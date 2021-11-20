@@ -219,13 +219,105 @@ class RMarkdownFile :
             data.to_markdown(index=False, tablefmt="github", numalign="center")
 
     def _fill_authors(self, results) :
+        self._fill_authors_table(results)
         self.statistics_viewer.plot_commits_by_author()
         results['commits_by_author_png'] = '![CommitsByAuthor](commits_by_author.png)'
         self.statistics_viewer.plot_lines_of_code_added_by_author()
         results['lines_of_code_added_by_author_png'] = \
             '![LinesOfCodeAddedByAuthor](lines_of_code_added_by_author.png)'
+        self._fill_author_of_month_table(results)
+        self._fill_author_of_year_table(results)
         self.statistics_viewer.plot_domains()
         results['domains_png'] = '![Domains](domains.png)'
+        self._fill_domains_table(results)
+
+    def _fill_authors_table(self, results) :
+        limit = self.git_statistics.configuration['max_authors']
+        authors = self.git_statistics.authors
+        authors_to_write = self.git_statistics.get_authors(limit)
+        total_commits = self.git_statistics.get_total_commits()
+        table = []
+        for i, author in enumerate(authors_to_write, 1) :
+            author_stats = authors[author]
+            commits = author_stats['commits']
+            lines_added = author_stats['lines_added']
+            lines_removed = author_stats['lines_removed']
+            first_commit = datetime.datetime.fromtimestamp(author_stats['first_commit_stamp'])
+            last_commit = datetime.datetime.fromtimestamp(author_stats['last_commit_stamp'])
+            timedelta = last_commit - first_commit
+            active_days = len(author_stats['active_days'])
+            ranking = i
+            row = [author, f"{commits} ({(100*commits/total_commits):.2f}%)",
+                   lines_added, lines_removed,
+                   first_commit.strftime("%Y-%m-%d"), last_commit.strftime("%Y-%m-%d"),
+                   timedelta, active_days, ranking]
+            table.append(row)
+        # pylint: disable=C0301
+        data = pd.DataFrame(
+            table,
+            columns=['Author', 'Commits (%)', '+ lines', '- lines', 'First Commit', 'Last commit', 'Age', 'Active days', '# by commits'])
+        results['list_of_authors_table'] = \
+            data.to_markdown(index=False, tablefmt="github", numalign="center")
+
+        rest_authors = set(authors.keys()).difference(authors_to_write)
+        if rest_authors :
+            results['more_authors_list'] = \
+                f"These didn't make it to the top: {', '.join(rest_authors)}"
+        else :
+            results['more_authors_list'] = ''
+
+    def _fill_author_of_month_table(self, results) :
+        author_of_month = self.git_statistics.get_author_of_month()
+        limit = self.git_statistics.configuration['authors_top']
+        table = []
+        for yymm in sorted(author_of_month.keys(), reverse=True) :
+            authors = author_of_month[yymm]
+            commits_by_month = sum(authors.values())
+            authors_by_commits = sorted(authors, key=authors.get, reverse=True)
+            most_commits = authors[authors_by_commits[0]]
+            authors_top_rest = ', '.join(authors_by_commits[1:limit+1])
+            # pylint: disable=C0301
+            row = [
+                yymm, authors_by_commits[0],
+                f"{most_commits} ({(100*most_commits/commits_by_month):.2f}% of {commits_by_month})",
+                authors_top_rest, len(authors)]
+            table.append(row)
+        data = pd.DataFrame(
+            table,
+            columns=['Month', 'Author', 'Commits (%)', f"Next top {limit}", "Number of authors"])
+        results['author_of_month_table'] = \
+            data.to_markdown(index=False, tablefmt="github", numalign="center")
+
+    def _fill_author_of_year_table(self, results) :
+        author_of_year = self.git_statistics.get_author_of_year()
+        limit = self.git_statistics.configuration['authors_top']
+        table = []
+        for year in sorted(author_of_year.keys(), reverse=True) :
+            authors = author_of_year[year]
+            commits_by_year = sum(authors.values())
+            authors_by_commits = sorted(authors, key=authors.get, reverse=True)
+            most_commits = authors[authors_by_commits[0]]
+            authors_top_rest = ', '.join(authors_by_commits[1:limit+1])
+            # pylint: disable=C0301
+            row = [
+                year, authors_by_commits[0],
+                f"{most_commits} ({(100*most_commits/commits_by_year):.2f}% of {commits_by_year})",
+                authors_top_rest, len(authors)]
+            table.append(row)
+        data = pd.DataFrame(
+            table,
+            columns=['Month', 'Author', 'Commits (%)', f"Next top {limit}", "Number of authors"])
+        results['author_of_year_table'] = \
+            data.to_markdown(index=False, tablefmt="github", numalign="center")
+
+    def _fill_domains_table(self, results) :
+        domains = self.git_statistics.get_domains_sorted_by_commits(reverse=True)
+        total_commits = self.git_statistics.get_total_commits()
+        table = [ [domain, f"{info['commits']} ({(100*info['commits']/total_commits):.2f}%)"]
+                  for domain, info in domains]
+        data = pd.DataFrame(table, columns=['Domains', 'Total (%)'])
+        results['domains_table'] = \
+            data.to_markdown(index=False, tablefmt="github", numalign="center")
 
     def _fill_files(self, results) :
         self.statistics_viewer.plot_files_by_date()
