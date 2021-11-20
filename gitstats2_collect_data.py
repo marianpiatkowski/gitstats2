@@ -127,6 +127,9 @@ rev-parse --short {commit_range}"
     def get_total_files(self) :
         return self.total_files
 
+    def get_total_size(self) :
+        return self.total_size
+
     def get_total_lines_of_code(self) :
         return self.total_lines
 
@@ -203,6 +206,9 @@ rev-parse --short {commit_range}"
 
     def get_author_of_year(self) :
         return self.author_of_year
+
+    def get_extensions(self) :
+        return self.extensions
 
     def collect(self) :
         self.runstart_stamp = time.time()
@@ -465,7 +471,6 @@ rev-parse --short {commit_range}"
         cmd = f"git ls-tree -r -l -z {self._get_commit_range('HEAD', end_only=True)}"
         pipe_out = self._get_pipe_output([cmd])
         lines = pipe_out.split('\000')
-        # blobs_to_read = []
         for line in lines :
             if not line :
                 continue
@@ -473,7 +478,7 @@ rev-parse --short {commit_range}"
             if parts[0] == '160000' and parts[3] == '-' :
                 # skip submodules
                 continue
-            # blob_id = parts[2]
+            blob_id = parts[2]
             filesize = int(parts[3])
             fullpath = parts[4]
             filename = fullpath.split('/')[-1]
@@ -483,12 +488,18 @@ rev-parse --short {commit_range}"
                 ext = filename[(filename.rfind('.')+1):]
             if len(ext) > self.configuration['max_ext_length'] :
                 ext = ''
-            if ext not in self.extensions :
-                self.extensions[ext] = {'files' : 0,  'lines' : 0}
-            self.extensions[ext]['files'] += 1
-
+            self._update_extensions(ext, blob_id)
             self.total_size += filesize
             self.total_files += 1
+
+    def _update_extensions(self, ext, blob_id) :
+        if ext not in self.extensions :
+            self.extensions[ext] = {'files' : 0, 'lines' : 0}
+        self.extensions[ext]['files'] += 1
+        cmd = f"git cat-file blob {blob_id}"
+        pipe_out = self._get_pipe_output([cmd, 'wc -l'])
+        lines = int(pipe_out)
+        self.extensions[ext]['lines'] += lines
 
     def _collect_lines_modified(self, repository) :
         extra = ''
@@ -634,8 +645,8 @@ rev-parse --short {commit_range}"
                 continue
             if re.search('commit', line) is None :
                 timestamp, rev = line.split()
-                pipe_out = self._get_pipe_output([f"git ls-tree -r --name-only \"{rev}\""])
-                file_tree = pipe_out.split('\n')
+                pipe_out = self._get_pipe_output([f"git ls-tree -r \"{rev}\""])
+                file_tree = self._file_tree_by_revision(pipe_out)
                 num_files = len(file_tree)
                 # meld stamp and repository into a single key for self.files_by_stamp
                 stamp_key = ' '.join([timestamp, repository])
@@ -647,6 +658,13 @@ rev-parse --short {commit_range}"
                 self._update_lines_by_date_by_author(
                     stamp_key, lines_by_author, prev_lines_by_author)
                 prev_lines_by_author = lines_by_author
+
+    def _file_tree_by_revision(self, pipe_out) :
+        lines = pipe_out.split('\n')
+        lines_splitted = list(map(lambda line : re.split(r'\s+', line, 4), lines))
+        # skip submodules
+        lines_filtered = list(filter(lambda line : line[0] != '160000', lines_splitted))
+        return [el for *_, el in lines_filtered]
 
     def _update_files_by_stamp(self, stamp_key, num_files, prev_num_files) :
         if stamp_key not in self.files_by_stamp :

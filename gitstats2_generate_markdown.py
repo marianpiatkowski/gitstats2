@@ -320,8 +320,31 @@ class RMarkdownFile :
             data.to_markdown(index=False, tablefmt="github", numalign="center")
 
     def _fill_files(self, results) :
+        total_size = self.git_statistics.get_total_size()
+        total_files = self.git_statistics.get_total_files()
+        avg_file_size_bytes = f"{(total_size/total_files):.2f}"
+        results['file_size_bytes'] = avg_file_size_bytes
         self.statistics_viewer.plot_files_by_date()
         results['files_by_date_png'] = '![FilesByDate](files_by_date.png)'
+        self._fill_file_extensions_table(results)
+
+    def _fill_file_extensions_table(self, results) :
+        extensions = self.git_statistics.get_extensions()
+        total_files = self.git_statistics.get_total_files()
+        total_lines = self.git_statistics.get_total_lines_of_code()
+        table = []
+        for extension in sorted(extensions.keys()) :
+            files = extensions[extension]['files']
+            lines = extensions[extension]['lines']
+            row = [
+                extension,
+                f"{files} ({(100*files/total_files):.2f}%)",
+                f"{lines} ({(100*lines/total_lines):.2f}%)",
+                lines // files]
+            table.append(row)
+        data = pd.DataFrame(table, columns=['Extension', 'Files (%)', 'Lines (%)', 'Lines/file'])
+        results['file_extensions_table'] = \
+            data.to_markdown(index=False, tablefmt="github", numalign="center")
 
     def _fill_lines(self, results) :
         self.statistics_viewer.plot_lines_of_code()
