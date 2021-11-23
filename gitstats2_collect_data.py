@@ -468,9 +468,9 @@ rev-parse --short {commit_range}"
         self.commits_by_timezone[timezone] = self.commits_by_timezone.get(timezone, 0) + 1
 
     def _collect_files(self, _repository) :
-        cmd = f"git ls-tree -r -l -z {self._get_commit_range('HEAD', end_only=True)}"
+        cmd = f"git ls-tree -r -l {self._get_commit_range('HEAD', end_only=True)}"
         pipe_out = self._get_pipe_output([cmd])
-        lines = pipe_out.split('\000')
+        lines = pipe_out.split('\n')
         for line in lines :
             if not line :
                 continue
@@ -482,12 +482,13 @@ rev-parse --short {commit_range}"
             filesize = int(parts[3])
             fullpath = parts[4]
             filename = fullpath.split('/')[-1]
-            if filename.find('.') == -1 or filename.rfind('.') == 0 :
+            first_dot = filename.find('.')
+            last_dot = filename.rfind('.')
+            if first_dot == -1 or last_dot == 0 or \
+               len(filename)-last_dot-1 > self.configuration['max_ext_length'] :
                 ext = ''
             else :
-                ext = filename[(filename.rfind('.')+1):]
-            if len(ext) > self.configuration['max_ext_length'] :
-                ext = ''
+                ext = filename[(last_dot+1):]
             self._update_extensions(ext, blob_id)
             self.total_size += filesize
             self.total_files += 1
