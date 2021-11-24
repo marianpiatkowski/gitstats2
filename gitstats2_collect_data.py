@@ -874,7 +874,7 @@ def main(args_orig) :
         'project_name': '',
         'processes': 8,
         'start_date': '',
-        'lines_by_date': False,
+        'lines_by_date': 0,
     }
     def usage() :
         print(f"""
