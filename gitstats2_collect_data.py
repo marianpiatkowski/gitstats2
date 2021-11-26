@@ -7,9 +7,11 @@ import time
 import datetime
 import re
 import calendar
+import collections
 from multiprocessing import Pool
 from collections import namedtuple
 from collections import Counter
+from functools import partial
 
 if sys.version_info < (3, 6) :
     print("Python 3.6 or higher is required for gitstats2", file=sys.stderr)
@@ -645,35 +647,81 @@ rev-parse --short {commit_range}"
             self._authors_of_repository[author]['commits']
 
     def _collect_revlist(self, repository) :
-        # Outputs "<stamp> <revlist>"
-        cmd = f"git rev-list --pretty=format:\"%at %T\" {self._get_log_range('HEAD')}"
-        pipe_out = self._get_pipe_output([cmd])
+        cmd = f"git rev-list --pretty=format:\"%at %T %H\" {self._get_log_range('HEAD')}"
+        pipe_out = self._get_pipe_output([cmd, 'grep -v ^commit'])
         lines = pipe_out.strip().split('\n')
+        # Outputs "<stamp> <revlist> <commit hash>"
         lines.reverse()
-        # Outputs:
-        # <timestamp> <rev-list>
-        # commit <sha1>
-        file_tree = []
+        time_files_commit = self._file_tree_by_revlist(lines)
+        self._update_files_by_stamp(repository, time_files_commit)
+        if self.configuration['lines_by_date'] :
+            lines_by_authors_by_stamp = self._lines_by_authors_by_stamp(time_files_commit)
+            self._update_lines_by_date_by_author(repository, lines_by_authors_by_stamp)
+
+    def _file_tree_by_revlist(self, lines) :
+        with Pool(processes=self.configuration['processes']) as pool :
+            time_files_commit = pool.map(self._add_time_files_commit, lines)
+            pool.terminate()
+            pool.join()
+        return time_files_commit
+
+    def _add_time_files_commit(self, line) :
+        timestamp, rev, commit_hash = line.split()
+        pipe_out = self._get_pipe_output([f"git ls-tree -r \"{rev}\""])
+        file_tree = self._file_tree_by_revision(pipe_out)
+        return (timestamp, file_tree, commit_hash)
+
+    def _update_files_by_stamp(self, repository, time_files_commit) :
         prev_num_files = 0
-        prev_lines_by_author = Counter()
-        for line in lines :
-            if not line :
-                continue
-            if re.search('commit', line) is None :
-                timestamp, rev = line.split()
-                pipe_out = self._get_pipe_output([f"git ls-tree -r \"{rev}\""])
-                file_tree = self._file_tree_by_revision(pipe_out)
-                num_files = len(file_tree)
-                # meld stamp and repository into a single key for self.files_by_stamp
-                stamp_key = ' '.join([timestamp, repository])
-                self._update_files_by_stamp(stamp_key, num_files, prev_num_files)
-                prev_num_files = num_files
-            elif self.configuration['lines_by_date'] :
-                commit_hash = line.split()[-1]
-                lines_by_author = self._lines_by_author(file_tree, commit_hash)
-                self._update_lines_by_date_by_author(
-                    stamp_key, lines_by_author, prev_lines_by_author)
-                prev_lines_by_author = lines_by_author
+        for timestamp, file_tree, _ in time_files_commit :
+            # meld stamp and repository into a single key for self.files_by_stamp
+            stamp_key = ' '.join([timestamp, repository])
+            num_files = len(file_tree)
+            if stamp_key not in self.files_by_stamp :
+                self.files_by_stamp[stamp_key] = {}
+            self.files_by_stamp[stamp_key]['files'] = num_files
+            self.files_by_stamp[stamp_key]['delta_files'] = num_files - prev_num_files
+            prev_num_files = num_files
+
+    def _lines_by_authors_by_stamp(self, time_files_commit) :
+        return [(timestamp, self._lines_by_authors(file_tree, commit_hash))
+                for timestamp, file_tree, commit_hash in time_files_commit]
+
+    def _lines_by_authors(self, file_tree, commit_hash) :
+        with Pool(processes=self.configuration['processes']) as pool :
+            lines_by_authors_list = pool.map(
+                partial(self._add_lines_by_authors, commit_hash=commit_hash), file_tree)
+            pool.terminate()
+            pool.join()
+        return sum(lines_by_authors_list, collections.Counter())
+
+    def _add_lines_by_authors(self, revfile, commit_hash) :
+        cmd = f"git blame --line-porcelain {commit_hash} -- {revfile}"
+        pipe_out = self._get_pipe_output([cmd, "sed -n 's/^author //p'"], quiet=True)
+        return Counter(pipe_out.split('\n'))
+
+    def _update_lines_by_date_by_author(self, repository, lines_by_authors_by_stamp) :
+        prev_lines_by_authors = Counter()
+        for timestamp, lines_by_authors in lines_by_authors_by_stamp :
+            # meld stamp and repository into a single key for self.files_by_stamp
+            stamp_key = ' '.join([timestamp, repository])
+            self.lines_by_date_by_author[stamp_key] = {}
+            lines_by_date_by_author = self.lines_by_date_by_author[stamp_key]
+            prev_authors = set(prev_lines_by_authors.keys())
+            authors = set(lines_by_authors.keys())
+            for author in authors.union(prev_authors) :
+                lines_by_date_by_author[author] = {}
+            for author in prev_authors.difference(authors) :
+                lines_by_date_by_author[author]['lines'] = 0
+                lines_by_date_by_author[author]['delta_lines'] = -prev_lines_by_authors[author]
+            for author in authors.intersection(prev_authors) :
+                lines_by_date_by_author[author]['lines'] = lines_by_authors[author]
+                lines_by_date_by_author[author]['delta_lines'] = \
+                    lines_by_authors[author] - prev_lines_by_authors[author]
+            for author in authors.difference(prev_authors) :
+                lines_by_date_by_author[author]['lines'] = lines_by_authors[author]
+                lines_by_date_by_author[author]['delta_lines'] = lines_by_authors[author]
+            prev_lines_by_authors = lines_by_authors
 
     def _file_tree_by_revision(self, pipe_out) :
         lines = pipe_out.split('\n')
@@ -681,38 +729,6 @@ rev-parse --short {commit_range}"
         # skip submodules
         lines_filtered = list(filter(lambda line : line[0] != '160000', lines_splitted))
         return [el for *_, el in lines_filtered]
-
-    def _update_files_by_stamp(self, stamp_key, num_files, prev_num_files) :
-        if stamp_key not in self.files_by_stamp :
-            self.files_by_stamp[stamp_key] = {}
-        self.files_by_stamp[stamp_key]['files'] = num_files
-        self.files_by_stamp[stamp_key]['delta_files'] = num_files - prev_num_files
-
-    def _lines_by_author(self, file_tree, commit_hash) :
-        lines_by_author = Counter()
-        for revfile in file_tree :
-            cmd = f"git blame --line-porcelain {commit_hash} -- {revfile}"
-            pipe_out = self._get_pipe_output([cmd, "sed -n 's/^author //p'"], quiet=True)
-            lines_by_author += Counter(pipe_out.split('\n'))
-        return lines_by_author
-
-    def _update_lines_by_date_by_author(self, stamp_key, lines_by_author, prev_lines_by_author) :
-        self.lines_by_date_by_author[stamp_key] = {}
-        lines_by_date_by_author = self.lines_by_date_by_author[stamp_key]
-        prev_authors = set(prev_lines_by_author.keys())
-        authors = set(lines_by_author.keys())
-        for author in authors.union(prev_authors) :
-            lines_by_date_by_author[author] = {}
-        for author in prev_authors.difference(authors) :
-            lines_by_date_by_author[author]['lines'] = 0
-            lines_by_date_by_author[author]['delta_lines'] = -prev_lines_by_author[author]
-        for author in authors.intersection(prev_authors) :
-            lines_by_date_by_author[author]['lines'] = lines_by_author[author]
-            lines_by_date_by_author[author]['delta_lines'] = \
-                lines_by_author[author] - prev_lines_by_author[author]
-        for author in authors.difference(prev_authors) :
-            lines_by_date_by_author[author]['lines'] = lines_by_author[author]
-            lines_by_date_by_author[author]['delta_lines'] = lines_by_author[author]
 
     def _update_and_accumulate_authors_stats(self) :
         for author, stats in self._authors_of_repository.items() :
