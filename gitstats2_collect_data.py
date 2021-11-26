@@ -7,6 +7,7 @@ import time
 import datetime
 import re
 import calendar
+from multiprocessing import Pool
 from collections import namedtuple
 from collections import Counter
 
@@ -471,36 +472,50 @@ rev-parse --short {commit_range}"
         cmd = f"git ls-tree -r -l {self._get_commit_range('HEAD', end_only=True)}"
         pipe_out = self._get_pipe_output([cmd])
         lines = pipe_out.split('\n')
-        for line in lines :
-            if not line :
-                continue
-            parts = re.split(r'\s+', line, 4)
-            if parts[0] == '160000' and parts[3] == '-' :
-                # skip submodules
-                continue
-            blob_id = parts[2]
-            filesize = int(parts[3])
-            fullpath = parts[4]
-            filename = fullpath.split('/')[-1]
-            first_dot = filename.find('.')
-            last_dot = filename.rfind('.')
-            if first_dot == -1 or last_dot == 0 or \
-               len(filename)-last_dot-1 > self.configuration['max_ext_length'] :
-                ext = ''
-            else :
-                ext = filename[(last_dot+1):]
-            self._update_extensions(ext, blob_id)
-            self.total_size += filesize
-            self.total_files += 1
+        ext_blob = [el for el in map(self._add_ext_blob, lines) if el is not None]
+        ext_lines = self._ext_lines_by_blob(ext_blob)
+        self._update_extensions(ext_lines)
 
-    def _update_extensions(self, ext, blob_id) :
-        if ext not in self.extensions :
-            self.extensions[ext] = {'files' : 0, 'lines' : 0}
-        self.extensions[ext]['files'] += 1
+    def _add_ext_blob(self, line) :
+        if not line :
+            return None
+        parts = re.split(r'\s+', line, 4)
+        if parts[0] == '160000' and parts[3] == '-' :
+            # skip submodules
+            return None
+        blob_id = parts[2]
+        filesize = int(parts[3])
+        fullpath = parts[4]
+        filename = fullpath.split('/')[-1]
+        first_dot = filename.find('.')
+        last_dot = filename.rfind('.')
+        if first_dot == -1 or last_dot == 0 or \
+           len(filename)-last_dot-1 > self.configuration['max_ext_length'] :
+            ext = ''
+        else :
+            ext = filename[(last_dot+1):]
+        self.total_size += filesize
+        self.total_files += 1
+        return (ext, blob_id)
+
+    def _ext_lines_by_blob(self, ext_blob) :
+        with Pool(processes=self.configuration['processes']) as pool :
+            ext_linecount = pool.starmap(self._add_linecount, ext_blob)
+            pool.terminate()
+            pool.join()
+        return ext_linecount
+
+    def _add_linecount(self, ext, blob_id) :
         cmd = f"git cat-file blob {blob_id}"
         pipe_out = self._get_pipe_output([cmd, 'wc -l'])
-        lines = int(pipe_out)
-        self.extensions[ext]['lines'] += lines
+        return (ext, int(pipe_out))
+
+    def _update_extensions(self, ext_lines) :
+        for ext, lines in ext_lines :
+            if ext not in self.extensions :
+                self.extensions[ext] = {'files' : 0, 'lines' : 0}
+            self.extensions[ext]['files'] += 1
+            self.extensions[ext]['lines'] += lines
 
     def _collect_lines_modified(self, repository) :
         extra = ''
