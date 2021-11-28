@@ -723,7 +723,8 @@ rev-parse --short {commit_range}"
                 lines_by_date_by_author[author]['delta_lines'] = lines_by_authors[author]
             prev_lines_by_authors = lines_by_authors
 
-    def _file_tree_by_revision(self, pipe_out) :
+    @staticmethod
+    def _file_tree_by_revision(pipe_out) :
         lines = pipe_out.split('\n')
         lines_splitted = list(map(lambda line : re.split(r'\s+', line, 4), lines))
         # skip submodules
