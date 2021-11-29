@@ -17,6 +17,95 @@ if sys.version_info < (3, 6) :
     print("Python 3.6 or higher is required for gitstats2", file=sys.stderr)
     sys.exit(1)
 
+EXECTIME_COMMANDS = 0.0
+
+def get_pipe_output(cmds, quiet=False) :
+    # pylint: disable=W0603
+    global EXECTIME_COMMANDS
+    start = time.time()
+    if not quiet and os.isatty(1) :
+        print('>> ' + ' | '.join(cmds), end=' ')
+        sys.stdout.flush()
+    process = subprocess.Popen(
+        cmds[0],
+        stdout = subprocess.PIPE,
+        shell = True,
+        encoding = 'utf8')
+    processes=[process]
+    for command in cmds[1:] :
+        process = subprocess.Popen(
+            command,
+            stdin = process.stdout,
+            stdout = subprocess.PIPE,
+            shell = True,
+            encoding = 'utf8')
+        processes.append(process)
+    output = process.communicate()[0]
+    for process in processes:
+        process.wait()
+    end = time.time()
+    if not quiet :
+        if os.isatty(1) :
+            print('\r', end=' ')
+        print(f"[{(end-start):.5f}] >> {' | '.join(cmds)}")
+    EXECTIME_COMMANDS += (end - start)
+    return output.rstrip('\n')
+
+class GitStatisticsParallel :
+    @staticmethod
+    def ext_lines_by_blob(ext_blob, processes) :
+        with Pool(processes=processes) as pool :
+            ext_linecount = pool.starmap(GitStatisticsParallel.add_linecount, ext_blob)
+            pool.terminate()
+            pool.join()
+        return ext_linecount
+
+    @staticmethod
+    def add_linecount(ext, blob_id) :
+        cmd = f"git cat-file blob {blob_id}"
+        pipe_out = get_pipe_output([cmd, 'wc -l'])
+        return (ext, int(pipe_out))
+
+    @staticmethod
+    def file_tree_by_revlist(lines, processes) :
+        with Pool(processes=processes) as pool :
+            time_files_commit = pool.map(GitStatisticsParallel.add_time_files_commit, lines)
+            pool.terminate()
+            pool.join()
+        return time_files_commit
+
+    @staticmethod
+    def add_time_files_commit(line) :
+        timestamp, rev, commit_hash = line.split()
+        pipe_out = get_pipe_output([f"git ls-tree -r \"{rev}\""])
+        file_tree = GitStatisticsParallel.file_tree_by_revision(pipe_out)
+        return (timestamp, file_tree, commit_hash)
+
+    @staticmethod
+    def file_tree_by_revision(pipe_out) :
+        lines = pipe_out.split('\n')
+        lines_splitted = list(map(lambda line : re.split(r'\s+', line, 4), lines))
+        # skip submodules
+        lines_filtered = list(filter(lambda line : line[0] != '160000', lines_splitted))
+        return [el for *_, el in lines_filtered]
+
+    @staticmethod
+    def lines_by_authors(file_tree, commit_hash, processes) :
+        with Pool(processes=processes) as pool :
+            lines_by_authors_list = pool.map(
+                partial(GitStatisticsParallel.add_lines_by_authors,
+                        commit_hash=commit_hash),
+                file_tree)
+            pool.terminate()
+            pool.join()
+        return sum(lines_by_authors_list, collections.Counter())
+
+    @staticmethod
+    def add_lines_by_authors(revfile, commit_hash) :
+        cmd = f"git blame --line-porcelain {commit_hash} -- {revfile}"
+        pipe_out = get_pipe_output([cmd, "sed -n 's/^author //p'"], quiet=True)
+        return Counter(pipe_out.split('\n'))
+
 class GitStatisticsData :
     def __init__(self, conf, gitpaths) :
         self.configuration = conf.copy()
@@ -30,7 +119,6 @@ class GitStatisticsData :
         self.total_lines_removed = 0
         self.total_commits = 0
         self.total_authors = set()
-        self.exectime_commands = float(0.0)
         self.tags = {}
         self.domains = {}
         self.activity_by_hour_of_day = {}
@@ -71,7 +159,6 @@ class GitStatisticsData :
         self.total_lines_removed = 0
         self.total_commits = 0
         self.total_authors = set()
-        self.exectime_commands = float(0.0)
         self.tags = {}
         self.domains = {}
         self.activity_by_hour_of_day = {}
@@ -105,15 +192,17 @@ class GitStatisticsData :
     def get_runstart_stamp(self) :
         return self.runstart_stamp
 
-    def get_gitstats2_version(self) :
+    @staticmethod
+    def get_gitstats2_version() :
         gitstats_repo = os.path.dirname(os.path.abspath(__file__))
         commit_range = '@'
         cmd = f"git --git-dir={gitstats_repo}/.git --work-tree={gitstats_repo} \
 rev-parse --short {commit_range}"
-        return self._get_pipe_output([cmd])
+        return get_pipe_output([cmd])
 
-    def get_git_version(self) :
-        return self._get_pipe_output(['git --version'])
+    @staticmethod
+    def get_git_version() :
+        return get_pipe_output(['git --version'])
 
     def get_first_commit_date(self) :
         return datetime.datetime.fromtimestamp(self.first_commit_stamp)
@@ -147,9 +236,6 @@ rev-parse --short {commit_range}"
 
     def get_total_authors(self) :
         return self.total_authors
-
-    def get_exectime_commands(self) :
-        return self.exectime_commands
 
     def get_activity_by_hour_of_day(self) :
         return self.activity_by_hour_of_day
@@ -237,36 +323,6 @@ rev-parse --short {commit_range}"
         if not self.configuration['project_name'] :
             self.configuration['project_name'] = ', '.join(repo_names)
 
-    def _get_pipe_output(self, cmds, quiet=False) :
-        start = time.time()
-        if not quiet and os.isatty(1) :
-            print('>> ' + ' | '.join(cmds), end=' ')
-            sys.stdout.flush()
-        process = subprocess.Popen(
-            cmds[0],
-            stdout = subprocess.PIPE,
-            shell = True,
-            encoding = 'utf8')
-        processes=[process]
-        for command in cmds[1:] :
-            process = subprocess.Popen(
-                command,
-                stdin = process.stdout,
-                stdout = subprocess.PIPE,
-                shell = True,
-                encoding = 'utf8')
-            processes.append(process)
-        output = process.communicate()[0]
-        for process in processes:
-            process.wait()
-        end = time.time()
-        if not quiet :
-            if os.isatty(1) :
-                print('\r', end=' ')
-            print(f"[{(end-start):.5f}] >> {' | '.join(cmds)}")
-        self.exectime_commands += (end - start)
-        return output.rstrip('\n')
-
     def _get_log_range(self, default_range='HEAD', end_only=True) :
         commit_range = self._get_commit_range(default_range, end_only)
         if self.configuration['start_date'] :
@@ -301,21 +357,21 @@ rev-parse --short {commit_range}"
 
     def _collect_authors(self, _repository) :
         cmd = f"git shortlog -s {self._get_log_range()}"
-        pipe_out = self._get_pipe_output([cmd, 'cut -c8-'])
+        pipe_out = get_pipe_output([cmd, 'cut -c8-'])
         lines = pipe_out.split('\n')
         self.total_authors.update(lines)
 
     def _collect_tags(self, repository) :
         self.tags[repository] = {}
         tags = self.tags[repository]
-        lines = self._get_pipe_output(['git show-ref --tags']).split('\n')
+        lines = get_pipe_output(['git show-ref --tags']).split('\n')
         for line in lines :
             if not line :
                 continue
             (hash_value, tag) = line.split(' ')
             tag = tag.replace('refs/tags/', '')
             cmd = f"git log \"{hash_value}\" --pretty=format:\"%at %aN\" -n 1"
-            output = self._get_pipe_output([cmd])
+            output = get_pipe_output([cmd])
             if output :
                 parts = output.split(' ')
                 stamp = 0
@@ -340,7 +396,7 @@ rev-parse --short {commit_range}"
                 cmd = f"git shortlog -s \"{tag}\""
             else:
                 cmd = f"git shortlog -s \"{tag}\" \"^{prev}\""
-            output = self._get_pipe_output([cmd])
+            output = get_pipe_output([cmd])
             if not output:
                 continue
             prev = tag
@@ -354,7 +410,7 @@ rev-parse --short {commit_range}"
     def _collect_commits_graph(self, _repository) :
         # Outputs "<stamp> <date> <time> <timezone> <author> '<' <mail> '>'"
         cmd = f"git rev-list --pretty=format:\"%at %ai %aN <%aE>\" {self._get_log_range('HEAD')}"
-        pipe_out = self._get_pipe_output([cmd, 'grep -v ^commit'])
+        pipe_out = get_pipe_output([cmd, 'grep -v ^commit'])
         lines = pipe_out.split('\n')
         self.total_commits += len(lines)
         for line in lines :
@@ -472,10 +528,11 @@ rev-parse --short {commit_range}"
 
     def _collect_files(self, _repository) :
         cmd = f"git ls-tree -r -l {self._get_commit_range('HEAD', end_only=True)}"
-        pipe_out = self._get_pipe_output([cmd])
+        pipe_out = get_pipe_output([cmd])
         lines = pipe_out.split('\n')
         ext_blob = [el for el in map(self._add_ext_blob, lines) if el is not None]
-        ext_lines = self._ext_lines_by_blob(ext_blob)
+        ext_lines = GitStatisticsParallel.ext_lines_by_blob(
+            ext_blob, self.configuration['processes'])
         self._update_extensions(ext_lines)
 
     def _add_ext_blob(self, line) :
@@ -500,18 +557,6 @@ rev-parse --short {commit_range}"
         self.total_files += 1
         return (ext, blob_id)
 
-    def _ext_lines_by_blob(self, ext_blob) :
-        with Pool(processes=self.configuration['processes']) as pool :
-            ext_linecount = pool.starmap(self._add_linecount, ext_blob)
-            pool.terminate()
-            pool.join()
-        return ext_linecount
-
-    def _add_linecount(self, ext, blob_id) :
-        cmd = f"git cat-file blob {blob_id}"
-        pipe_out = self._get_pipe_output([cmd, 'wc -l'])
-        return (ext, int(pipe_out))
-
     def _update_extensions(self, ext_lines) :
         for ext, lines in ext_lines :
             if ext not in self.extensions :
@@ -525,7 +570,7 @@ rev-parse --short {commit_range}"
             extra = '--first-parent -m'
         cmd = f"git log --shortstat {extra} --pretty=format:\"%at %aN\" \
 {self._get_log_range('HEAD')}"
-        pipe_out = self._get_pipe_output([cmd])
+        pipe_out = get_pipe_output([cmd])
         lines = pipe_out.split('\n')
         lines.reverse()
         # outputs:
@@ -591,7 +636,7 @@ rev-parse --short {commit_range}"
         # committed what, not just through mainline)
         cmd = f"git log --shortstat --date-order --pretty=format:\"%at %aN\" \
 {self._get_log_range('@')}"
-        pipe_out = self._get_pipe_output([cmd])
+        pipe_out = get_pipe_output([cmd])
         lines = pipe_out.split('\n')
         lines.reverse()
         inserted = 0
@@ -648,28 +693,16 @@ rev-parse --short {commit_range}"
 
     def _collect_revlist(self, repository) :
         cmd = f"git rev-list --pretty=format:\"%at %T %H\" {self._get_log_range('HEAD')}"
-        pipe_out = self._get_pipe_output([cmd, 'grep -v ^commit'])
+        pipe_out = get_pipe_output([cmd, 'grep -v ^commit'])
         lines = pipe_out.strip().split('\n')
         # Outputs "<stamp> <revlist> <commit hash>"
         lines.reverse()
-        time_files_commit = self._file_tree_by_revlist(lines)
+        time_files_commit = GitStatisticsParallel.file_tree_by_revlist(
+            lines, self.configuration['processes'])
         self._update_files_by_stamp(repository, time_files_commit)
         if self.configuration['lines_by_date'] :
             lines_by_authors_by_stamp = self._lines_by_authors_by_stamp(time_files_commit)
             self._update_lines_by_date_by_author(repository, lines_by_authors_by_stamp)
-
-    def _file_tree_by_revlist(self, lines) :
-        with Pool(processes=self.configuration['processes']) as pool :
-            time_files_commit = pool.map(self._add_time_files_commit, lines)
-            pool.terminate()
-            pool.join()
-        return time_files_commit
-
-    def _add_time_files_commit(self, line) :
-        timestamp, rev, commit_hash = line.split()
-        pipe_out = self._get_pipe_output([f"git ls-tree -r \"{rev}\""])
-        file_tree = self._file_tree_by_revision(pipe_out)
-        return (timestamp, file_tree, commit_hash)
 
     def _update_files_by_stamp(self, repository, time_files_commit) :
         prev_num_files = 0
@@ -684,21 +717,10 @@ rev-parse --short {commit_range}"
             prev_num_files = num_files
 
     def _lines_by_authors_by_stamp(self, time_files_commit) :
-        return [(timestamp, self._lines_by_authors(file_tree, commit_hash))
+        lines_by_authors = GitStatisticsParallel.lines_by_authors
+        return [(timestamp, lines_by_authors(
+            file_tree, commit_hash, self.configuration['processes']))
                 for timestamp, file_tree, commit_hash in time_files_commit]
-
-    def _lines_by_authors(self, file_tree, commit_hash) :
-        with Pool(processes=self.configuration['processes']) as pool :
-            lines_by_authors_list = pool.map(
-                partial(self._add_lines_by_authors, commit_hash=commit_hash), file_tree)
-            pool.terminate()
-            pool.join()
-        return sum(lines_by_authors_list, collections.Counter())
-
-    def _add_lines_by_authors(self, revfile, commit_hash) :
-        cmd = f"git blame --line-porcelain {commit_hash} -- {revfile}"
-        pipe_out = self._get_pipe_output([cmd, "sed -n 's/^author //p'"], quiet=True)
-        return Counter(pipe_out.split('\n'))
 
     def _update_lines_by_date_by_author(self, repository, lines_by_authors_by_stamp) :
         prev_lines_by_authors = Counter()
@@ -722,14 +744,6 @@ rev-parse --short {commit_range}"
                 lines_by_date_by_author[author]['lines'] = lines_by_authors[author]
                 lines_by_date_by_author[author]['delta_lines'] = lines_by_authors[author]
             prev_lines_by_authors = lines_by_authors
-
-    @staticmethod
-    def _file_tree_by_revision(pipe_out) :
-        lines = pipe_out.split('\n')
-        lines_splitted = list(map(lambda line : re.split(r'\s+', line, 4), lines))
-        # skip submodules
-        lines_filtered = list(filter(lambda line : line[0] != '160000', lines_splitted))
-        return [el for *_, el in lines_filtered]
 
     def _update_and_accumulate_authors_stats(self) :
         for author, stats in self._authors_of_repository.items() :
@@ -955,9 +969,8 @@ Please see the manual page for more details.""")
 
     time_end = time.time()
     exectime_total = time_end - time_start
-    exectime_commands = git_statistics.get_exectime_commands()
-    print(f"Execution time {exectime_total:.5f} secs, {exectime_commands:.5f} secs \
-({(100.0*exectime_commands/exectime_total):.2f} %) in external commands")
+    print(f"Execution time {exectime_total:.5f} secs, {EXECTIME_COMMANDS:.5f} secs \
+({(100.0*EXECTIME_COMMANDS/exectime_total):.2f} %) in external commands")
 
 if __name__ == '__main__' :
     main(sys.argv[1:])

@@ -8,7 +8,7 @@ import warnings
 from collections import Counter
 from multiprocessing import Pool
 from functools import partial
-from gitstats2_collect_data import GitStatisticsData
+import gitstats2_collect_data as gitstats2
 
 ########################################################################################
 # To supress resource warnings, the script can be also run as:
@@ -16,9 +16,6 @@ from gitstats2_collect_data import GitStatisticsData
 ########################################################################################
 
 class ParallelTester :
-    def __init__(self, git_statistics) :
-        self.git_statistics = git_statistics
-
     @staticmethod
     def add_file_node(line) :
         line_splitted = re.split(r'\s+', line, 4)
@@ -27,18 +24,21 @@ class ParallelTester :
             return None
         return line_splitted[-1]
 
-    def add_lines_by_authors(self, revfile) :
+    @staticmethod
+    def add_lines_by_authors(revfile) :
         commit_hash = "a3810bfe95be7d1b005bfb8bdacd77485d6834e8"
         cmd = f"git blame --line-porcelain {commit_hash} -- {revfile}"
-        pipe_out = self.git_statistics._get_pipe_output([cmd, "sed -n 's/^author //p'"], quiet=True)
+        pipe_out = gitstats2.get_pipe_output([cmd, "sed -n 's/^author //p'"], quiet=True)
         return Counter(pipe_out.split('\n'))
 
-    def add_lines_by_authors2(self, revfile, commit_hash) :
+    @staticmethod
+    def add_lines_by_authors2(revfile, commit_hash) :
         cmd = f"git blame --line-porcelain {commit_hash} -- {revfile}"
-        pipe_out = self.git_statistics._get_pipe_output([cmd, "sed -n 's/^author //p'"], quiet=True)
+        pipe_out = gitstats2.get_pipe_output([cmd, "sed -n 's/^author //p'"], quiet=True)
         return Counter(pipe_out.split('\n'))
 
-    def add_ext_blob(self, line) :
+    @staticmethod
+    def add_ext_blob(line, max_ext_length) :
         if not line :
             return None
         parts = re.split(r'\s+', line, 4)
@@ -51,21 +51,30 @@ class ParallelTester :
         first_dot = filename.find('.')
         last_dot = filename.rfind('.')
         if first_dot == -1 or last_dot == 0 or \
-           len(filename)-last_dot-1 > self.git_statistics.configuration['max_ext_length'] :
+           len(filename)-last_dot-1 > max_ext_length :
             ext = ''
         else :
             ext = filename[(last_dot+1):]
         return (ext, blob_id)
 
-    def add_linecount(self, ext, blob_id) :
+    @staticmethod
+    def add_linecount(ext, blob_id) :
         cmd = f"git cat-file blob {blob_id}"
-        pipe_out = self.git_statistics._get_pipe_output([cmd, 'wc -l'], quiet=True)
+        pipe_out = gitstats2.get_pipe_output([cmd, 'wc -l'], quiet=True)
         return (ext, int(pipe_out))
+
+class GitStatisticsDataMock :
+    def __init__(self, conf, gitpaths) :
+        self.configuration = conf.copy()
+        self._gitpaths = gitpaths
+
+    def get_gitpaths(self) :
+        return self._gitpaths
 
 class GitStatisticsCollectTestCase(unittest.TestCase) :
     def __init__(self, *args, **kwargs) :
         super().__init__(*args, **kwargs)
-        self.git_statistics = GitStatisticsData(
+        self.git_statistics = GitStatisticsDataMock(
             {'max_ext_length' : 8},
             ["/Users/tasmania/packages/ABAPInEmacs/"])
 
@@ -91,11 +100,11 @@ class GitStatisticsCollectTestCase(unittest.TestCase) :
             'test/where-used/template_where_used.xml']
 
     def test_file_tree_sequential(self) :
-        gitpath = self.git_statistics._gitpaths[0]
+        gitpath = self.git_statistics.get_gitpaths()[0]
         prev_dir = os.getcwd()
         os.chdir(gitpath)
         commit_hash = "a3810bfe95be7d1b005bfb8bdacd77485d6834e8"
-        pipe_out = self.git_statistics._get_pipe_output([f"git ls-tree -r {commit_hash}"])
+        pipe_out = gitstats2.get_pipe_output([f"git ls-tree -r {commit_hash}"])
         lines = pipe_out.split('\n')
         lines_splitted = list(map(lambda line : re.split(r'\s+', line, 4), lines))
         # skip submodules
@@ -105,15 +114,15 @@ class GitStatisticsCollectTestCase(unittest.TestCase) :
         self.assertEqual(file_tree, self._get_expected_file_tree())
 
     def test_file_tree_parallel(self) :
-        t = ParallelTester(self.git_statistics)
-        gitpath = self.git_statistics._gitpaths[0]
+        gitpath = self.git_statistics.get_gitpaths()[0]
         prev_dir = os.getcwd()
         os.chdir(gitpath)
         commit_hash = "a3810bfe95be7d1b005bfb8bdacd77485d6834e8"
-        pipe_out = self.git_statistics._get_pipe_output([f"git ls-tree -r {commit_hash}"])
+        pipe_out = gitstats2.get_pipe_output([f"git ls-tree -r {commit_hash}"])
         lines = pipe_out.split('\n')
         with Pool(processes=8) as pool :
-            file_tree = [el for el in pool.map(t.add_file_node, lines) if el is not None]
+            file_tree = [el for el in pool.map(
+                ParallelTester.add_file_node, lines) if el is not None]
             pool.terminate()
             pool.join()
         os.chdir(prev_dir)
@@ -125,7 +134,7 @@ class GitStatisticsCollectTestCase(unittest.TestCase) :
             {'Marian Piatkowski': 3433, 'qianmarv': 949, 'Marvin': 674, 'Marvin Qian': 186})
 
     def test_lines_by_author_sequential(self) :
-        gitpath = self.git_statistics._gitpaths[0]
+        gitpath = self.git_statistics.get_gitpaths()[0]
         prev_dir = os.getcwd()
         os.chdir(gitpath)
         commit_hash = "a3810bfe95be7d1b005bfb8bdacd77485d6834e8"
@@ -133,19 +142,18 @@ class GitStatisticsCollectTestCase(unittest.TestCase) :
         lines_by_author = Counter()
         for revfile in file_tree :
             cmd = f"git blame --line-porcelain {commit_hash} -- {revfile}"
-            pipe_out = self.git_statistics._get_pipe_output([cmd, "sed -n 's/^author //p'"], quiet=True)
+            pipe_out = gitstats2.get_pipe_output([cmd, "sed -n 's/^author //p'"], quiet=True)
             lines_by_author += Counter(pipe_out.split('\n'))
         os.chdir(prev_dir)
         self.assertEqual(lines_by_author, self._get_expected_lines_by_author())
 
     def test_lines_by_author_parallel(self) :
-        t = ParallelTester(self.git_statistics)
-        gitpath = self.git_statistics._gitpaths[0]
+        gitpath = self.git_statistics.get_gitpaths()[0]
         prev_dir = os.getcwd()
         os.chdir(gitpath)
         file_tree = self._get_expected_file_tree()
         with Pool(processes=8) as pool :
-            lines_by_author_list = pool.map(t.add_lines_by_authors, file_tree)
+            lines_by_author_list = pool.map(ParallelTester.add_lines_by_authors, file_tree)
             pool.terminate()
             pool.join()
         lines_by_author = sum(lines_by_author_list, collections.Counter())
@@ -153,14 +161,16 @@ class GitStatisticsCollectTestCase(unittest.TestCase) :
         self.assertEqual(lines_by_author, self._get_expected_lines_by_author())
 
     def test_lines_by_author_parallel2(self) :
-        t = ParallelTester(self.git_statistics)
-        gitpath = self.git_statistics._gitpaths[0]
+        gitpath = self.git_statistics.get_gitpaths()[0]
         prev_dir = os.getcwd()
         os.chdir(gitpath)
         file_tree = self._get_expected_file_tree()
         commit_hash = "a3810bfe95be7d1b005bfb8bdacd77485d6834e8"
         with Pool(processes=8) as pool :
-            lines_by_author_list = pool.map(partial(t.add_lines_by_authors2, commit_hash=commit_hash), file_tree)
+            lines_by_author_list = pool.map(
+                partial(ParallelTester.add_lines_by_authors2,
+                        commit_hash=commit_hash),
+                file_tree)
             pool.terminate()
             pool.join()
         lines_by_author = sum(lines_by_author_list, collections.Counter())
@@ -198,27 +208,31 @@ class GitStatisticsCollectTestCase(unittest.TestCase) :
             ]
 
     def test_ext_blob_sequential(self) :
-        t = ParallelTester(self.git_statistics)
-        gitpath = self.git_statistics._gitpaths[0]
+        gitpath = self.git_statistics.get_gitpaths()[0]
         prev_dir = os.getcwd()
         os.chdir(gitpath)
         commit_hash = "a3810bfe95be7d1b005bfb8bdacd77485d6834e8"
-        pipe_out = self.git_statistics._get_pipe_output([f"git ls-tree -r -l {commit_hash}"])
+        pipe_out = gitstats2.get_pipe_output([f"git ls-tree -r -l {commit_hash}"])
         lines = pipe_out.split('\n')
-        ext_blob = [el for el in map(t.add_ext_blob,lines) if el is not None]
+        ext_blob = [el for el in map(
+            partial(ParallelTester.add_ext_blob,
+                    max_ext_length=self.git_statistics.configuration['max_ext_length']),
+            lines) if el is not None]
         os.chdir(prev_dir)
         self.assertEqual(ext_blob, self._get_expected_ext_blob())
 
     def test_ext_blob_parallel(self) :
-        t = ParallelTester(self.git_statistics)
-        gitpath = self.git_statistics._gitpaths[0]
+        gitpath = self.git_statistics.get_gitpaths()[0]
         prev_dir = os.getcwd()
         os.chdir(gitpath)
         commit_hash = "a3810bfe95be7d1b005bfb8bdacd77485d6834e8"
-        pipe_out = self.git_statistics._get_pipe_output([f"git ls-tree -r -l {commit_hash}"])
+        pipe_out = gitstats2.get_pipe_output([f"git ls-tree -r -l {commit_hash}"])
         lines = pipe_out.split('\n')
         with Pool(processes=8) as pool :
-            ext_blob = [el for el in pool.map(t.add_ext_blob, lines) if el is not None]
+            ext_blob = [el for el in pool.map(
+                partial(ParallelTester.add_ext_blob,
+                        max_ext_length=self.git_statistics.configuration['max_ext_length']),
+                lines) if el is not None]
             pool.terminate()
             pool.join()
         os.chdir(prev_dir)
@@ -256,23 +270,21 @@ class GitStatisticsCollectTestCase(unittest.TestCase) :
 
     def test_ext_linecount_sequential(self) :
         warnings.simplefilter(action="ignore", category="ResourceWarning")
-        t = ParallelTester(self.git_statistics)
-        gitpath = self.git_statistics._gitpaths[0]
+        gitpath = self.git_statistics.get_gitpaths()[0]
         prev_dir = os.getcwd()
         os.chdir(gitpath)
         ext_blob = self._get_expected_ext_blob()
-        ext_linecount = [t.add_linecount(ext, blob_id) for ext, blob_id in ext_blob]
+        ext_linecount = [ParallelTester.add_linecount(ext, blob_id) for ext, blob_id in ext_blob]
         os.chdir(prev_dir)
         self.assertEqual(ext_linecount, self._get_expected_ext_linecount())
 
     def test_ext_linecount_parallel(self) :
-        t = ParallelTester(self.git_statistics)
-        gitpath = self.git_statistics._gitpaths[0]
+        gitpath = self.git_statistics.get_gitpaths()[0]
         prev_dir = os.getcwd()
         os.chdir(gitpath)
         ext_blob = self._get_expected_ext_blob()
         with Pool(processes=8) as pool :
-            ext_linecount = pool.starmap(t.add_linecount, ext_blob)
+            ext_linecount = pool.starmap(ParallelTester.add_linecount, ext_blob)
             pool.terminate()
             pool.join()
         os.chdir(prev_dir)
