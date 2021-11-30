@@ -3,11 +3,9 @@ import sys
 import time
 import getopt
 import os
+import pickle
 import subprocess
-import gitstats2_markdown
-from gitstats2_collect_data import GitStatisticsData
-from gitstats2_collect_data import GitStatisticsWriter
-from gitstats2_generate_markdown import RMarkdownFile
+import gitstats2_collect_data
 
 if sys.version_info < (3, 6) :
     print("Python 3.6 or higher is required for gitstats2", file=sys.stderr)
@@ -69,22 +67,21 @@ Please see the manual page for more details.""")
         print("FATAL: Output path is not a directory or does not exist")
         sys.exit(1)
 
-    git_statistics = GitStatisticsData(conf, gitpaths)
+    git_statistics = gitstats2_collect_data.GitStatisticsData(conf, gitpaths)
     git_statistics.collect()
-    statistics_writer = GitStatisticsWriter(git_statistics)
+    statistics_writer = gitstats2_collect_data.GitStatisticsWriter(git_statistics)
     statistics_writer.write(outputpath)
-    file_generator = RMarkdownFile(gitstats2_markdown.template, git_statistics)
+    prev_dir = os.getcwd()
     os.chdir(outputpath)
-    with open(gitstats2_markdown.filename, 'w') as fout:
-        fout.write(file_generator.generate())
-    subprocess.run(
-        f"Rscript -e \"rmarkdown::render('{gitstats2_markdown.filename}')\"",
-        shell=True,
-        check=True)
+    with open('git_statistics.pkl', 'wb') as fout :
+        pickle.dump(git_statistics, fout, pickle.HIGHEST_PROTOCOL)
+    os.chdir(prev_dir)
+
+    subprocess.call(f"python3 gitstats2_generate_markdown.py {outputpath}", shell=True)
 
     time_end = time.time()
     exectime_total = time_end - time_start
-    exectime_commands = git_statistics.get_exectime_commands()
+    exectime_commands = gitstats2_collect_data.EXECTIME_COMMANDS
     print(f"Execution time {exectime_total:.5f} secs, {exectime_commands:.5f} secs \
 ({(100.0*exectime_commands/exectime_total):.2f} %) in external commands")
 

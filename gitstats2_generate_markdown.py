@@ -1,11 +1,21 @@
 # -*- python-indent-offset: 4 -*-
+import sys
+import os
+import pickle
+import subprocess
 import datetime
 import time
 import calendar
 from string import Template
 import pandas as pd
 import matplotlib
+import gitstats2_markdown
 from gitstats2_plot_graphs import GitStatisticsGraphs
+from gitstats2_collect_data import GitStatisticsData # pylint: disable=W0611
+
+if sys.version_info < (3, 6) :
+    print("Python 3.6 or higher is required for gitstats2", file=sys.stderr)
+    sys.exit(1)
 
 class RMarkdownFile :
     def __init__(self, templ, git_statistics) :
@@ -329,3 +339,26 @@ class RMarkdownFile :
             tags_row.append(', '.join(authors_w_commits))
             tags_table.append(tags_row)
         return tags_table
+
+def main(args) :
+    def usage() :
+        print('Usage: gitstats2_generate_markdown.py <path>')
+    if len(args) != 1 :
+        usage()
+        sys.exit(0)
+    path = args[0]
+    prev_dir = os.getcwd()
+    os.chdir(path)
+    with open('git_statistics.pkl', 'rb') as inp :
+        git_statistics = pickle.load(inp)
+        file_generator = RMarkdownFile(gitstats2_markdown.template, git_statistics)
+    with open(gitstats2_markdown.filename, 'w') as fout:
+        fout.write(file_generator.generate())
+    subprocess.run(
+        f"Rscript -e \"rmarkdown::render('{gitstats2_markdown.filename}')\"",
+        shell=True,
+        check=True)
+    os.chdir(prev_dir)
+
+if __name__ == '__main__' :
+    main(sys.argv[1:])
