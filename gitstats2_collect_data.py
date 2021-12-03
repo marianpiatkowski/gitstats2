@@ -67,17 +67,20 @@ class GitStatisticsParallel :
         return (ext, int(pipe_out))
 
     @staticmethod
-    def file_tree_by_revlist(lines, processes) :
+    def file_tree_by_revlist(lines, processes, quiet=False) :
         with Pool(processes=processes) as pool :
-            time_files_commit = pool.map(GitStatisticsParallel.add_time_files_commit, lines)
+            time_files_commit = pool.map(
+                partial(GitStatisticsParallel.add_time_files_commit,
+                        quiet=quiet),
+                lines)
             pool.terminate()
             pool.join()
         return time_files_commit
 
     @staticmethod
-    def add_time_files_commit(line) :
+    def add_time_files_commit(line, quiet) :
         timestamp, rev, commit_hash = line.split()
-        pipe_out = get_pipe_output([f"git ls-tree -r \"{rev}\""])
+        pipe_out = get_pipe_output([f"git ls-tree -r \"{rev}\""], quiet=quiet)
         file_tree = GitStatisticsParallel.file_tree_by_revision(pipe_out)
         return (timestamp, file_tree, commit_hash)
 
