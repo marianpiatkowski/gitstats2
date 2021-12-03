@@ -32,12 +32,6 @@ class ParallelTester :
         return Counter(pipe_out.split('\n'))
 
     @staticmethod
-    def add_lines_by_authors2(revfile, commit_hash) :
-        cmd = f"git blame --line-porcelain {commit_hash} -- {revfile}"
-        pipe_out = gitstats2.get_pipe_output([cmd, "sed -n 's/^author //p'"], quiet=True)
-        return Counter(pipe_out.split('\n'))
-
-    @staticmethod
     def add_ext_blob(line, max_ext_length) :
         if not line :
             return None
@@ -166,16 +160,10 @@ class GitStatisticsCollectTestCase(unittest.TestCase) :
         os.chdir(gitpath)
         file_tree = self._get_expected_file_tree()
         commit_hash = "a3810bfe95be7d1b005bfb8bdacd77485d6834e8"
-        with Pool(processes=8) as pool :
-            lines_by_author_list = pool.map(
-                partial(ParallelTester.add_lines_by_authors2,
-                        commit_hash=commit_hash),
-                file_tree)
-            pool.terminate()
-            pool.join()
-        lines_by_author = sum(lines_by_author_list, collections.Counter())
+        lines_by_authors = gitstats2.GitStatisticsParallel.lines_by_authors(
+            file_tree, commit_hash, processes=8)
         os.chdir(prev_dir)
-        self.assertEqual(lines_by_author, self._get_expected_lines_by_author())
+        self.assertEqual(lines_by_authors, self._get_expected_lines_by_author())
 
     @staticmethod
     def _get_expected_ext_blob() :
