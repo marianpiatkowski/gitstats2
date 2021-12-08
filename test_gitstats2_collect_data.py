@@ -8,6 +8,7 @@ import warnings
 from collections import Counter
 from multiprocessing import Pool
 from functools import partial
+import icontract
 import gitstats2_collect_data as gitstats2
 
 ########################################################################################
@@ -361,6 +362,32 @@ class GitStatisticsCollectTestCase(unittest.TestCase) :
             pool.join()
         os.chdir(prev_dir)
         self.assertEqual(ext_linecount, self._get_expected_ext_linecount())
+
+class RequireCWDGitTestCase(unittest.TestCase) :
+    def setUp(self) :
+        self.time_start = time.time()
+
+    def tearDown(self) :
+        time_end = time.time()
+        print(f"=== Execution time of {self.id()}, {(time_end-self.time_start):.3f}s")
+
+    @staticmethod
+    @icontract.require(gitstats2.cwd_git)
+    def require_cwd_git() :
+        pass
+
+    def test_cwd_git(self) :
+        prev_dir = os.getcwd()
+        os.chdir("/Users/tasmania/packages/ABAPInEmacs")
+        self.require_cwd_git()
+        os.chdir(prev_dir)
+
+    def test_cwd_not_git(self) :
+        prev_dir = os.getcwd()
+        os.chdir("/Users/tasmania/packages/")
+        with self.assertRaises(icontract.errors.ViolationError) :
+            self.require_cwd_git()
+        os.chdir(prev_dir)
 
 if __name__ == '__main__' :
     unittest.main()

@@ -19,6 +19,19 @@ if sys.version_info < (3, 6) :
 
 EXECTIME_COMMANDS = 0.0
 
+def cwd_git() :
+    success = False
+    try :
+        subprocess.check_call(
+            'git rev-parse --show-toplevel',
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            shell=True)
+        success = True
+    except subprocess.CalledProcessError :
+        success = False
+    return success
+
 def get_pipe_output(cmds, quiet=False) :
     # pylint: disable=W0603
     global EXECTIME_COMMANDS
