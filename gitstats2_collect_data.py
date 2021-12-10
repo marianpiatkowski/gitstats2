@@ -17,8 +17,6 @@ if sys.version_info < (3, 6) :
     print("Python 3.6 or higher is required for gitstats2", file=sys.stderr)
     sys.exit(1)
 
-EXECTIME_COMMANDS = 0.0
-
 def cwd_git() :
     success = False
     try :
@@ -33,8 +31,6 @@ def cwd_git() :
     return success
 
 def get_pipe_output(cmds, quiet=False) :
-    # pylint: disable=W0603
-    global EXECTIME_COMMANDS
     start = time.time()
     if not quiet and os.isatty(1) :
         print('>> ' + ' | '.join(cmds), end=' ')
@@ -61,8 +57,10 @@ def get_pipe_output(cmds, quiet=False) :
         if os.isatty(1) :
             print('\r', end=' ')
         print(f"[{(end-start):.5f}] >> {' | '.join(cmds)}")
-    EXECTIME_COMMANDS += (end - start)
+    get_pipe_output.exectime_commands += (end - start)
     return output.rstrip('\n')
+
+get_pipe_output.exectime_commands = 0.0
 
 class GitStatisticsParallel :
     @staticmethod
@@ -985,8 +983,8 @@ Please see the manual page for more details.""")
 
     time_end = time.time()
     exectime_total = time_end - time_start
-    print(f"Execution time {exectime_total:.5f} secs, {EXECTIME_COMMANDS:.5f} secs \
-({(100.0*EXECTIME_COMMANDS/exectime_total):.2f} %) in external commands")
+    print(f"Execution time {exectime_total:.5f} secs, {get_pipe_output.exectime_commands:.5f} secs \
+({(100.0*get_pipe_output.exectime_commands/exectime_total):.2f} %) in external commands")
 
 if __name__ == '__main__' :
     main(sys.argv[1:])
