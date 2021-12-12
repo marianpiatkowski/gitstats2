@@ -407,164 +407,10 @@ class LogShortStatData(GitStatisticsBase, LogShortStatParser) :
 # ****************************************************************************************
 # ****************************************************************************************
 
-class GitStatisticsData(LogShortStatData) :
+class GitTagsData(GitStatisticsBase) :
     def __init__(self, conf, gitpaths) :
         super().__init__(conf, gitpaths)
-        self.runstart_stamp = float(0.0)
-        self.first_commit_stamp = 0
-        self.last_commit_stamp = 0
-        self.total_files = 0
-        self.total_commits = 0
         self.tags = {}
-        self.domains = {}
-        self.activity_by_hour_of_day = {}
-        self.activity_by_hour_of_day_busiest = 0
-        self.activity_by_day_of_week = {}
-        self.activity_by_hour_of_week = {}
-        self.activity_by_hour_of_week_busiest = 0
-        self.activity_by_month_of_year = {}
-        self.activity_by_year_week = {}
-        self.activity_by_year_week_peak = 0
-        self.authors = {}
-        self._authors_of_repository = {}
-        self.author_of_month = {}
-        self.commits_by_month = {}
-        self.author_of_year = {}
-        self.commits_by_year = {}
-        self.first_active_day = None
-        self.active_days = set()
-        self.commits_by_timezone = {}
-        self.total_size = 0
-        self.extensions = {}
-        self.files_by_stamp = {}
-        self.lines_by_date_by_author = {}
-
-    def reset(self) :
-        self.runstart_stamp = float(0.0)
-        self.first_commit_stamp = 0
-        self.last_commit_stamp = 0
-        self.total_files = 0
-        self.total_commits = 0
-        self.tags = {}
-        self.domains = {}
-        self.activity_by_hour_of_day = {}
-        self.activity_by_hour_of_day_busiest = 0
-        self.activity_by_day_of_week = {}
-        self.activity_by_hour_of_week = {}
-        self.activity_by_hour_of_week_busiest = 0
-        self.activity_by_month_of_year = {}
-        self.activity_by_year_week = {}
-        self.activity_by_year_week_peak = 0
-        self.authors = {}
-        self._authors_of_repository = {}
-        self.author_of_month = {}
-        self.commits_by_month = {}
-        self.author_of_year = {}
-        self.commits_by_year = {}
-        self.first_active_day = None
-        self.active_days = set()
-        self.commits_by_timezone = {}
-        self.total_size = 0
-        self.extensions = {}
-        self.files_by_stamp = {}
-        self.lines_by_date_by_author = {}
-
-    def get_runstart_stamp(self) :
-        return self.runstart_stamp
-
-    def get_first_commit_date(self) :
-        return datetime.datetime.fromtimestamp(self.first_commit_stamp)
-
-    def get_last_commit_date(self) :
-        return datetime.datetime.fromtimestamp(self.last_commit_stamp)
-
-    def get_commit_delta_days(self) :
-        return (self.last_commit_stamp // 86400 - self.first_commit_stamp // 86400) + 1
-
-    def get_active_days(self) :
-        return self.active_days
-
-    def get_total_files(self) :
-        return self.total_files
-
-    def get_total_size(self) :
-        return self.total_size
-
-    def get_total_commits(self) :
-        return self.total_commits
-
-    def get_activity_by_hour_of_day(self) :
-        return self.activity_by_hour_of_day
-
-    def get_activity_by_day_of_week(self) :
-        return self.activity_by_day_of_week
-
-    def get_activity_by_month_of_year(self) :
-        return self.activity_by_month_of_year
-
-    def get_commits_by_month(self) :
-        return self.commits_by_month
-
-    def get_commits_by_year(self) :
-        return self.commits_by_year
-
-    def get_authors(self, limit=None) :
-        res = self._get_keys_sorted_by_value_key(self.authors, 'commits')
-        res.reverse()
-        return res[:limit]
-
-    def get_domains_sorted_by_commits(self, **kwargs) :
-        return sorted(self.domains.items(), key=lambda el : el[1]['commits'], **kwargs)
-
-    def get_files_by_stamp(self) :
-        return self.files_by_stamp
-
-    def get_lines_by_date_by_author(self) :
-        return self.lines_by_date_by_author
-
-    def get_activity_by_hour_of_week(self) :
-        return self.activity_by_hour_of_week
-
-    def get_commits_by_timezone(self) :
-        return self.commits_by_timezone
-
-    def get_author_of_month(self) :
-        return self.author_of_month
-
-    def get_author_of_year(self) :
-        return self.author_of_year
-
-    def get_extensions(self) :
-        return self.extensions
-
-    def collect(self) :
-        self.runstart_stamp = time.time()
-        repo_names = []
-        for gitpath in self.gitpaths :
-            print(f"Git path: {gitpath}")
-            prev_dir = os.getcwd()
-            os.chdir(gitpath)
-            print('Collecting data...')
-            self._authors_of_repository = {}
-            repository = os.path.basename(os.path.abspath(gitpath))
-            repo_names.append(repository)
-            self._collect_authors(repository)
-            self._collect_tags(repository)
-            self._collect_tags_info(repository)
-            self._collect_commits_graph(repository)
-            self._collect_files(repository)
-            self._collect_lines_modified(repository)
-            self._collect_lines_modified_by_author(repository)
-            self._collect_revlist(repository)
-            self._update_and_accumulate_authors_stats()
-            os.chdir(prev_dir)
-        if not self.configuration['project_name'] :
-            self.configuration['project_name'] = ', '.join(repo_names)
-
-    @staticmethod
-    def _get_keys_sorted_by_value_key(input_dict, key) :
-        by_value_key_list = [(input_dict[el][key], el) for el in input_dict.keys()]
-        return [el for *_, el in sorted(by_value_key_list)]
 
     def _collect_tags(self, repository) :
         self.tags[repository] = {}
@@ -611,6 +457,134 @@ class GitStatisticsData(LogShortStatData) :
                 author = parts[2]
                 tags[tag]['commits'] += commits
                 tags[tag]['authors'][author] = commits
+
+# ****************************************************************************************
+# ****************************************************************************************
+
+class GitFilesStatistics(GitStatisticsBase) :
+    def __init__(self, conf, gitpaths) :
+        super().__init__(conf, gitpaths)
+        self.total_size = 0
+        self.total_files = 0
+        self.extensions = {}
+
+    def get_total_size(self) :
+        return self.total_size
+
+    def get_total_files(self) :
+        return self.total_files
+
+    def get_extensions(self) :
+        return self.extensions
+
+    def _collect_files(self, _repository) :
+        cmd = f"git ls-tree -r -l {self.get_commit_range('HEAD', end_only=True)}"
+        pipe_out = get_pipe_output([cmd])
+        lines = pipe_out.split('\n')
+        ext_blob = [el for el in map(self._add_ext_blob, lines) if el is not None]
+        ext_lines = GitStatisticsParallel.ext_lines_by_blob(
+            ext_blob, self.configuration['processes'])
+        self._update_extensions(ext_lines)
+
+    def _add_ext_blob(self, line) :
+        if not line :
+            return None
+        parts = re.split(r'\s+', line, 4)
+        if parts[0] == '160000' and parts[3] == '-' :
+            # skip submodules
+            return None
+        blob_id = parts[2]
+        filesize = int(parts[3])
+        fullpath = parts[4]
+        filename = fullpath.split('/')[-1]
+        first_dot = filename.find('.')
+        last_dot = filename.rfind('.')
+        if first_dot == -1 or last_dot == 0 or \
+           len(filename)-last_dot-1 > self.configuration['max_ext_length'] :
+            ext = ''
+        else :
+            ext = filename[(last_dot+1):]
+        self.total_size += filesize
+        self.total_files += 1
+        return (ext, blob_id)
+
+    def _update_extensions(self, ext_lines) :
+        for ext, lines in ext_lines :
+            if ext not in self.extensions :
+                self.extensions[ext] = {'files' : 0, 'lines' : 0}
+            self.extensions[ext]['files'] += 1
+            self.extensions[ext]['lines'] += lines
+
+# ****************************************************************************************
+# ****************************************************************************************
+
+class GitContributionActivity(GitStatisticsBase) :
+    def __init__(self, conf, gitpaths) :
+        super().__init__(conf, gitpaths)
+        self.first_commit_stamp = 0
+        self.last_commit_stamp = 0
+        self.total_commits = 0
+        self.domains = {}
+        self.activity_by_hour_of_day = {}
+        self.activity_by_hour_of_day_busiest = 0
+        self.activity_by_day_of_week = {}
+        self.activity_by_hour_of_week = {}
+        self.activity_by_hour_of_week_busiest = 0
+        self.activity_by_month_of_year = {}
+        self.activity_by_year_week = {}
+        self.activity_by_year_week_peak = 0
+        self.author_of_month = {}
+        self.commits_by_month = {}
+        self.author_of_year = {}
+        self.commits_by_year = {}
+        self.first_active_day = None
+        self.active_days = set()
+        self.commits_by_timezone = {}
+
+    def get_first_commit_date(self) :
+        return datetime.datetime.fromtimestamp(self.first_commit_stamp)
+
+    def get_last_commit_date(self) :
+        return datetime.datetime.fromtimestamp(self.last_commit_stamp)
+
+    def get_commit_delta_days(self) :
+        return (self.last_commit_stamp // 86400 - self.first_commit_stamp // 86400) + 1
+
+    def get_active_days(self) :
+        return self.active_days
+
+    def get_total_commits(self) :
+        return self.total_commits
+
+    def get_activity_by_hour_of_day(self) :
+        return self.activity_by_hour_of_day
+
+    def get_activity_by_day_of_week(self) :
+        return self.activity_by_day_of_week
+
+    def get_activity_by_month_of_year(self) :
+        return self.activity_by_month_of_year
+
+    def get_commits_by_month(self) :
+        return self.commits_by_month
+
+    def get_commits_by_year(self) :
+        return self.commits_by_year
+
+    def get_domains_sorted_by_commits(self, **kwargs) :
+        return sorted(self.domains.items(), key=lambda el : el[1]['commits'], **kwargs)
+
+    def get_activity_by_hour_of_week(self) :
+        return self.activity_by_hour_of_week
+
+    def get_commits_by_timezone(self) :
+        return self.commits_by_timezone
+
+    def get_author_of_month(self) :
+        return self.author_of_month
+
+    def get_author_of_year(self) :
+        return self.author_of_year
 
     def _collect_commits_graph(self, _repository) :
         # Outputs "<stamp> <date> <time> <timezone> <author> '<' <mail> '>'"
@@ -731,43 +705,62 @@ class GitStatisticsData(LogShortStatData) :
     def _update_timezones(self, timezone) :
         self.commits_by_timezone[timezone] = self.commits_by_timezone.get(timezone, 0) + 1
 
-    def _collect_files(self, _repository) :
-        cmd = f"git ls-tree -r -l {self.get_commit_range('HEAD', end_only=True)}"
-        pipe_out = get_pipe_output([cmd])
-        lines = pipe_out.split('\n')
-        ext_blob = [el for el in map(self._add_ext_blob, lines) if el is not None]
-        ext_lines = GitStatisticsParallel.ext_lines_by_blob(
-            ext_blob, self.configuration['processes'])
-        self._update_extensions(ext_lines)
+# ****************************************************************************************
+# ****************************************************************************************
 
-    def _add_ext_blob(self, line) :
-        if not line :
-            return None
-        parts = re.split(r'\s+', line, 4)
-        if parts[0] == '160000' and parts[3] == '-' :
-            # skip submodules
-            return None
-        blob_id = parts[2]
-        filesize = int(parts[3])
-        fullpath = parts[4]
-        filename = fullpath.split('/')[-1]
-        first_dot = filename.find('.')
-        last_dot = filename.rfind('.')
-        if first_dot == -1 or last_dot == 0 or \
-           len(filename)-last_dot-1 > self.configuration['max_ext_length'] :
-            ext = ''
-        else :
-            ext = filename[(last_dot+1):]
-        self.total_size += filesize
-        self.total_files += 1
-        return (ext, blob_id)
+class GitStatisticsData(LogShortStatData,
+                        GitTagsData,
+                        GitFilesStatistics,
+                        GitContributionActivity) :
+    def __init__(self, conf, gitpaths) :
+        super().__init__(conf, gitpaths)
+        self.runstart_stamp = float(0.0)
+        self.authors = {}
+        self.files_by_stamp = {}
+        self.lines_by_date_by_author = {}
 
-    def _update_extensions(self, ext_lines) :
-        for ext, lines in ext_lines :
-            if ext not in self.extensions :
-                self.extensions[ext] = {'files' : 0, 'lines' : 0}
-            self.extensions[ext]['files'] += 1
-            self.extensions[ext]['lines'] += lines
+    def get_runstart_stamp(self) :
+        return self.runstart_stamp
+
+    def get_authors(self, limit=None) :
+        res = self._get_keys_sorted_by_value_key(self.authors, 'commits')
+        res.reverse()
+        return res[:limit]
+
+    def get_files_by_stamp(self) :
+        return self.files_by_stamp
+
+    def get_lines_by_date_by_author(self) :
+        return self.lines_by_date_by_author
+
+    def collect(self) :
+        self.runstart_stamp = time.time()
+        repo_names = []
+        for gitpath in self.gitpaths :
+            print(f"Git path: {gitpath}")
+            prev_dir = os.getcwd()
+            os.chdir(gitpath)
+            print('Collecting data...')
+            self._authors_of_repository = {}
+            repository = os.path.basename(os.path.abspath(gitpath))
+            repo_names.append(repository)
+            self._collect_authors(repository)
+            self._collect_tags(repository)
+            self._collect_tags_info(repository)
+            self._collect_commits_graph(repository)
+            self._collect_files(repository)
+            self._collect_lines_modified(repository)
+            self._collect_lines_modified_by_author(repository)
+            self._collect_revlist(repository)
+            self._update_and_accumulate_authors_stats()
+            os.chdir(prev_dir)
+        if not self.configuration['project_name'] :
+            self.configuration['project_name'] = ', '.join(repo_names)
+
+    @staticmethod
+    def _get_keys_sorted_by_value_key(input_dict, key) :
+        by_value_key_list = [(input_dict[el][key], el) for el in input_dict.keys()]
+        return [el for *_, el in sorted(by_value_key_list)]
 
     def _collect_revlist(self, repository) :
         cmd = f"git rev-list --pretty=format:\"%at %T %H\" {self.get_log_range('HEAD')}"
