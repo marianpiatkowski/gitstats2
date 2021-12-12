@@ -181,7 +181,7 @@ class GitStatisticsBase :
     def __init__(self, conf, gitpaths) :
         self.configuration = conf.copy()
         self.gitpaths = gitpaths
-        self.total_authors = set()
+        self.runstart_stamp = float(0.0)
         self._authors_of_repository = {}
 
     @staticmethod
@@ -209,14 +209,8 @@ rev-parse --short {commit_range}"
             return f"{self.configuration['commit_begin']}..{self.configuration['commit_end']}"
         return default_range
 
-    def get_total_authors(self) :
-        return self.total_authors
-
-    def _collect_authors(self, _repository) :
-        cmd = f"git shortlog -s {self.get_log_range()}"
-        pipe_out = get_pipe_output([cmd, 'cut -c8-'])
-        lines = pipe_out.split('\n')
-        self.total_authors.update(lines)
+    def get_runstart_stamp(self) :
+        return self.runstart_stamp
 
 # ****************************************************************************************
 # ****************************************************************************************
@@ -385,7 +379,6 @@ class LogShortStatData(GitStatisticsBase, LogShortStatParser) :
         stamp_key = ' '.join([stamp, repository])
         author = ' '.join(splitted_line[1:])
         (_, inserted, deleted) = self._changes_by_commit
-        # taken from class GitStatisticsData
         if author not in self._authors_of_repository :
             self._authors_of_repository[author] = \
                 {'lines_added' : 0, 'lines_removed' : 0, 'commits' : 0}
@@ -467,6 +460,8 @@ class GitFilesStatistics(GitStatisticsBase) :
         self.total_size = 0
         self.total_files = 0
         self.extensions = {}
+        self.files_by_stamp = {}
+        self.lines_by_date_by_author = {}
 
     def get_total_size(self) :
         return self.total_size
@@ -476,6 +471,12 @@ class GitFilesStatistics(GitStatisticsBase) :
 
     def get_extensions(self) :
         return self.extensions
+
+    def get_files_by_stamp(self) :
+        return self.files_by_stamp
+
+    def get_lines_by_date_by_author(self) :
+        return self.lines_by_date_by_author
 
     def _collect_files(self, _repository) :
         cmd = f"git ls-tree -r -l {self.get_commit_range('HEAD', end_only=True)}"
@@ -514,6 +515,60 @@ class GitFilesStatistics(GitStatisticsBase) :
                 self.extensions[ext] = {'files' : 0, 'lines' : 0}
             self.extensions[ext]['files'] += 1
             self.extensions[ext]['lines'] += lines
+
+    def _collect_revlist(self, repository) :
+        cmd = f"git rev-list --pretty=format:\"%at %T %H\" {self.get_log_range('HEAD')}"
+        pipe_out = get_pipe_output([cmd, 'grep -v ^commit'])
+        lines = pipe_out.strip().split('\n')
+        # Outputs "<stamp> <revlist> <commit hash>"
+        lines.reverse()
+        time_files_commit = GitStatisticsParallel.file_tree_by_revlist(
+            lines, self.configuration['processes'])
+        self._update_files_by_stamp(repository, time_files_commit)
+        if self.configuration['lines_by_date'] :
+            lines_by_authors_by_stamp = self._lines_by_authors_by_stamp(time_files_commit)
+            self._update_lines_by_date_by_author(repository, lines_by_authors_by_stamp)
+
+    def _update_files_by_stamp(self, repository, time_files_commit) :
+        prev_num_files = 0
+        for timestamp, file_tree, _ in time_files_commit :
+            # meld stamp and repository into a single key for self.files_by_stamp
+            stamp_key = ' '.join([timestamp, repository])
+            num_files = len(file_tree)
+            if stamp_key not in self.files_by_stamp :
+                self.files_by_stamp[stamp_key] = {}
+            self.files_by_stamp[stamp_key]['files'] = num_files
+            self.files_by_stamp[stamp_key]['delta_files'] = num_files - prev_num_files
+            prev_num_files = num_files
+
+    def _lines_by_authors_by_stamp(self, time_files_commit) :
+        lines_by_authors = GitStatisticsParallel.lines_by_authors
+        return [(timestamp, lines_by_authors(
+            file_tree, commit_hash, self.configuration['processes']))
+                for timestamp, file_tree, commit_hash in time_files_commit]
+
+    def _update_lines_by_date_by_author(self, repository, lines_by_authors_by_stamp) :
+        prev_lines_by_authors = Counter()
+        for timestamp, lines_by_authors in lines_by_authors_by_stamp :
+            # meld stamp and repository into a single key for self.files_by_stamp
+            stamp_key = ' '.join([timestamp, repository])
+            self.lines_by_date_by_author[stamp_key] = {}
+            lines_by_date_by_author = self.lines_by_date_by_author[stamp_key]
+            prev_authors = set(prev_lines_by_authors.keys())
+            authors = set(lines_by_authors.keys())
+            for author in authors.union(prev_authors) :
+                lines_by_date_by_author[author] = {}
+            for author in prev_authors.difference(authors) :
+                lines_by_date_by_author[author]['lines'] = 0
+                lines_by_date_by_author[author]['delta_lines'] = -prev_lines_by_authors[author]
+            for author in authors.intersection(prev_authors) :
+                lines_by_date_by_author[author]['lines'] = lines_by_authors[author]
+                lines_by_date_by_author[author]['delta_lines'] = \
+                    lines_by_authors[author] - prev_lines_by_authors[author]
+            for author in authors.difference(prev_authors) :
+                lines_by_date_by_author[author]['lines'] = lines_by_authors[author]
+                lines_by_date_by_author[author]['delta_lines'] = lines_by_authors[author]
+            prev_lines_by_authors = lines_by_authors
 
 # ****************************************************************************************
 # ****************************************************************************************
@@ -714,24 +769,16 @@ class GitStatisticsData(LogShortStatData,
                         GitContributionActivity) :
     def __init__(self, conf, gitpaths) :
         super().__init__(conf, gitpaths)
-        self.runstart_stamp = float(0.0)
+        self.total_authors = set()
         self.authors = {}
-        self.files_by_stamp = {}
-        self.lines_by_date_by_author = {}
 
-    def get_runstart_stamp(self) :
-        return self.runstart_stamp
+    def get_total_authors(self) :
+        return self.total_authors
 
     def get_authors(self, limit=None) :
         res = self._get_keys_sorted_by_value_key(self.authors, 'commits')
         res.reverse()
         return res[:limit]
-
-    def get_files_by_stamp(self) :
-        return self.files_by_stamp
-
-    def get_lines_by_date_by_author(self) :
-        return self.lines_by_date_by_author
 
     def collect(self) :
         self.runstart_stamp = time.time()
@@ -762,59 +809,11 @@ class GitStatisticsData(LogShortStatData,
         by_value_key_list = [(input_dict[el][key], el) for el in input_dict.keys()]
         return [el for *_, el in sorted(by_value_key_list)]
 
-    def _collect_revlist(self, repository) :
-        cmd = f"git rev-list --pretty=format:\"%at %T %H\" {self.get_log_range('HEAD')}"
-        pipe_out = get_pipe_output([cmd, 'grep -v ^commit'])
-        lines = pipe_out.strip().split('\n')
-        # Outputs "<stamp> <revlist> <commit hash>"
-        lines.reverse()
-        time_files_commit = GitStatisticsParallel.file_tree_by_revlist(
-            lines, self.configuration['processes'])
-        self._update_files_by_stamp(repository, time_files_commit)
-        if self.configuration['lines_by_date'] :
-            lines_by_authors_by_stamp = self._lines_by_authors_by_stamp(time_files_commit)
-            self._update_lines_by_date_by_author(repository, lines_by_authors_by_stamp)
-
-    def _update_files_by_stamp(self, repository, time_files_commit) :
-        prev_num_files = 0
-        for timestamp, file_tree, _ in time_files_commit :
-            # meld stamp and repository into a single key for self.files_by_stamp
-            stamp_key = ' '.join([timestamp, repository])
-            num_files = len(file_tree)
-            if stamp_key not in self.files_by_stamp :
-                self.files_by_stamp[stamp_key] = {}
-            self.files_by_stamp[stamp_key]['files'] = num_files
-            self.files_by_stamp[stamp_key]['delta_files'] = num_files - prev_num_files
-            prev_num_files = num_files
-
-    def _lines_by_authors_by_stamp(self, time_files_commit) :
-        lines_by_authors = GitStatisticsParallel.lines_by_authors
-        return [(timestamp, lines_by_authors(
-            file_tree, commit_hash, self.configuration['processes']))
-                for timestamp, file_tree, commit_hash in time_files_commit]
-
-    def _update_lines_by_date_by_author(self, repository, lines_by_authors_by_stamp) :
-        prev_lines_by_authors = Counter()
-        for timestamp, lines_by_authors in lines_by_authors_by_stamp :
-            # meld stamp and repository into a single key for self.files_by_stamp
-            stamp_key = ' '.join([timestamp, repository])
-            self.lines_by_date_by_author[stamp_key] = {}
-            lines_by_date_by_author = self.lines_by_date_by_author[stamp_key]
-            prev_authors = set(prev_lines_by_authors.keys())
-            authors = set(lines_by_authors.keys())
-            for author in authors.union(prev_authors) :
-                lines_by_date_by_author[author] = {}
-            for author in prev_authors.difference(authors) :
-                lines_by_date_by_author[author]['lines'] = 0
-                lines_by_date_by_author[author]['delta_lines'] = -prev_lines_by_authors[author]
-            for author in authors.intersection(prev_authors) :
-                lines_by_date_by_author[author]['lines'] = lines_by_authors[author]
-                lines_by_date_by_author[author]['delta_lines'] = \
-                    lines_by_authors[author] - prev_lines_by_authors[author]
-            for author in authors.difference(prev_authors) :
-                lines_by_date_by_author[author]['lines'] = lines_by_authors[author]
-                lines_by_date_by_author[author]['delta_lines'] = lines_by_authors[author]
-            prev_lines_by_authors = lines_by_authors
+    def _collect_authors(self, _repository) :
+        cmd = f"git shortlog -s {self.get_log_range()}"
+        pipe_out = get_pipe_output([cmd, 'cut -c8-'])
+        lines = pipe_out.split('\n')
+        self.total_authors.update(lines)
 
     def _update_and_accumulate_authors_stats(self) :
         for author, stats in self._authors_of_repository.items() :
