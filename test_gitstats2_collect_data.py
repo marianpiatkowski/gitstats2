@@ -67,12 +67,12 @@ class GitStatisticsDataMock :
         return self._gitpaths
 
     def get_log_range(self, default_range='HEAD', end_only=True) :
-        commit_range = self._get_commit_range(default_range, end_only)
+        commit_range = self.get_commit_range(default_range, end_only)
         if self.configuration['start_date'] :
             return f"--since=\"{self.configuration['start_date']}\" \"{commit_range}\""
         return commit_range
 
-    def _get_commit_range(self, default_range='HEAD', end_only=True) :
+    def get_commit_range(self, default_range='HEAD', end_only=True) :
         if self.configuration['commit_end'] :
             if end_only or not self.configuration['commit_begin'] :
                 return self.configuration['commit_end']
