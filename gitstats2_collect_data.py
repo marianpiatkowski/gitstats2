@@ -776,9 +776,10 @@ class GitStatisticsData(LogShortStatData,
         return self.total_authors
 
     def get_authors(self, limit=None) :
-        res = self._get_keys_sorted_by_value_key(self.authors, 'commits')
-        res.reverse()
-        return res[:limit]
+        authors_by_commits = [
+            author for author, _ in
+            sorted(self.authors.items(), key=lambda el : el[1]['commits'], reverse=True)]
+        return authors_by_commits[:limit]
 
     def collect(self) :
         self.runstart_stamp = time.time()
@@ -803,11 +804,6 @@ class GitStatisticsData(LogShortStatData,
             os.chdir(prev_dir)
         if not self.configuration['project_name'] :
             self.configuration['project_name'] = ', '.join(repo_names)
-
-    @staticmethod
-    def _get_keys_sorted_by_value_key(input_dict, key) :
-        by_value_key_list = [(input_dict[el][key], el) for el in input_dict.keys()]
-        return [el for *_, el in sorted(by_value_key_list)]
 
     def _collect_authors(self, _repository) :
         cmd = f"git shortlog -s {self.get_log_range()}"
