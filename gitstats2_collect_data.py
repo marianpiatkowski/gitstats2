@@ -418,15 +418,12 @@ class GitTagsData(GitStatisticsBase) :
             output = get_pipe_output([cmd])
             if output :
                 parts = output.split(' ')
-                stamp = 0
-                try :
-                    stamp = int(parts[0])
-                except ValueError :
-                    stamp = 0
+                stamp = int(parts[0])
+                date = datetime.datetime.fromtimestamp(stamp)
                 tags[tag] = {
                     'stamp': stamp,
                     'hash' : hash_value,
-                    'date' : datetime.datetime.fromtimestamp(stamp).strftime('%Y-%m-%d'),
+                    'date' : date.strftime('%Y-%m-%d'),
                     'commits': 0,
                     'authors': {} }
 
@@ -650,10 +647,8 @@ class GitContributionActivity(GitStatisticsBase) :
         for line in lines :
             parts = line.split(' ', 4)
             author = ''
-            try :
-                stamp = int(parts[0])
-            except ValueError :
-                stamp = 0
+            stamp = int(parts[0])
+            date = datetime.datetime.fromtimestamp(stamp)
             timezone = parts[3]
             author, mail = parts[4].split('<', 1)
             author = author.rstrip()
@@ -661,7 +656,6 @@ class GitContributionActivity(GitStatisticsBase) :
             domain = '?'
             if mail.find('@') != -1 :
                 domain = mail.rsplit('@', 1)[1]
-            date = datetime.datetime.fromtimestamp(float(stamp))
 
             self._update_extremal_commit_stamps(stamp)
             self._update_mail_domains(domain)
