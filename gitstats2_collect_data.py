@@ -212,6 +212,9 @@ rev-parse --short {commit_range}"
     def get_runstart_stamp(self) :
         return self.runstart_stamp
 
+    def collect(self) :
+        pass
+
 # ****************************************************************************************
 # ****************************************************************************************
 
@@ -288,6 +291,23 @@ class LogShortStatData(GitStatisticsBase, LogShortStatParser) :
     @staticmethod
     def do_nothing(_repository, _line) :
         pass
+
+    def collect(self) :
+        self.runstart_stamp = time.time()
+        repo_names = []
+        for gitpath in self.gitpaths :
+            print(f"Git path: {gitpath}")
+            prev_dir = os.getcwd()
+            os.chdir(gitpath)
+            print('Collecting data...')
+            self._authors_of_repository = {}
+            repository = os.path.basename(os.path.abspath(gitpath))
+            repo_names.append(repository)
+            self._collect_lines_modified(repository)
+            self._collect_lines_modified_by_author(repository)
+            os.chdir(prev_dir)
+        if not self.configuration['project_name'] :
+            self.configuration['project_name'] = ', '.join(repo_names)
 
     def _set_changes_by_commit(self, _, line) :
         self._changes_by_commit = self._get_modified_counts(line)
@@ -405,6 +425,23 @@ class GitTagsData(GitStatisticsBase) :
         super().__init__(conf, gitpaths)
         self.tags = {}
 
+    def collect(self) :
+        self.runstart_stamp = time.time()
+        repo_names = []
+        for gitpath in self.gitpaths :
+            print(f"Git path: {gitpath}")
+            prev_dir = os.getcwd()
+            os.chdir(gitpath)
+            print('Collecting data...')
+            self._authors_of_repository = {}
+            repository = os.path.basename(os.path.abspath(gitpath))
+            repo_names.append(repository)
+            self._collect_tags(repository)
+            self._collect_tags_info(repository)
+            os.chdir(prev_dir)
+        if not self.configuration['project_name'] :
+            self.configuration['project_name'] = ', '.join(repo_names)
+
     def _collect_tags(self, repository) :
         self.tags[repository] = {}
         tags = self.tags[repository]
@@ -474,6 +511,23 @@ class GitFilesStatistics(GitStatisticsBase) :
 
     def get_lines_by_date_by_author(self) :
         return self.lines_by_date_by_author
+
+    def collect(self) :
+        self.runstart_stamp = time.time()
+        repo_names = []
+        for gitpath in self.gitpaths :
+            print(f"Git path: {gitpath}")
+            prev_dir = os.getcwd()
+            os.chdir(gitpath)
+            print('Collecting data...')
+            self._authors_of_repository = {}
+            repository = os.path.basename(os.path.abspath(gitpath))
+            repo_names.append(repository)
+            self._collect_files(repository)
+            self._collect_revlist(repository)
+            os.chdir(prev_dir)
+        if not self.configuration['project_name'] :
+            self.configuration['project_name'] = ', '.join(repo_names)
 
     def _collect_files(self, _repository) :
         cmd = f"git ls-tree -r -l {self.get_commit_range('HEAD', end_only=True)}"
@@ -637,6 +691,22 @@ class GitContributionActivity(GitStatisticsBase) :
 
     def get_author_of_year(self) :
         return self.author_of_year
+
+    def collect(self) :
+        self.runstart_stamp = time.time()
+        repo_names = []
+        for gitpath in self.gitpaths :
+            print(f"Git path: {gitpath}")
+            prev_dir = os.getcwd()
+            os.chdir(gitpath)
+            print('Collecting data...')
+            self._authors_of_repository = {}
+            repository = os.path.basename(os.path.abspath(gitpath))
+            repo_names.append(repository)
+            self._collect_commits_graph(repository)
+            os.chdir(prev_dir)
+        if not self.configuration['project_name'] :
+            self.configuration['project_name'] = ', '.join(repo_names)
 
     def _collect_commits_graph(self, _repository) :
         # Outputs "<stamp> <date> <time> <timezone> <author> '<' <mail> '>'"
