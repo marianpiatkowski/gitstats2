@@ -348,12 +348,18 @@ class LogShortStatData(GitStatisticsBase, LogShortStatParser) :
             # <stamp> <author>
             self.decide(line)
             self.process_current_state(repository, line)
+        self._process_in_state[
+            ShortStatParserState.ChangesByCommit][
+                ShortStatParserState.CommitInfo] = self.do_nothing
 
     def _collect_lines_modified_by_author(self, repository) :
         self.current_state = ShortStatParserState.Initial
         self._process_in_state[
             ShortStatParserState.ChangesByCommit][
                 ShortStatParserState.CommitInfo] = self._update_lines_modified_by_author
+        self._process_in_state[
+            ShortStatParserState.CommitInfo][
+                ShortStatParserState.CommitInfo] = self._update_merge_commit
         cmd = f"git log --shortstat --date-order --pretty=format:\"%at %aN\" \
 {self.get_log_range('@')}"
         pipe_out = get_pipe_output([cmd])
@@ -361,6 +367,12 @@ class LogShortStatData(GitStatisticsBase, LogShortStatParser) :
         for line in reversed(lines) :
             self.decide(line)
             self.process_current_state(repository, line)
+        self._process_in_state[
+            ShortStatParserState.ChangesByCommit][
+                ShortStatParserState.CommitInfo] = self.do_nothing
+        self._process_in_state[
+            ShortStatParserState.CommitInfo][
+                ShortStatParserState.CommitInfo] = self.do_nothing
 
     def toggle(self, target_state) :
         self.process_current_state = self._process_in_state[self.current_state][target_state]
@@ -432,6 +444,27 @@ class LogShortStatData(GitStatisticsBase, LogShortStatParser) :
             self.changes_by_date_by_author[stamp_key][author] = {}
         self.changes_by_date_by_author[stamp_key][author]['lines_added'] = inserted
         self.changes_by_date_by_author[stamp_key][author]['lines_removed'] = deleted
+        self.changes_by_date_by_author[stamp_key][author]['commits'] = \
+            self._authors_of_repository[author]['commits']
+
+    def _update_merge_commit(self, repository, line) :
+        splitted_line = line.split(' ')
+        stamp = splitted_line[0]
+        # meld stamp and repository into a single key
+        stamp_key = ' '.join([stamp, repository])
+        author = ' '.join(splitted_line[1:])
+        if author not in self._authors_of_repository :
+            self._authors_of_repository[author] = \
+                {'lines_added' : 0, 'lines_removed' : 0, 'commits' : 0}
+        self._authors_of_repository[author]['commits'] = \
+            self._authors_of_repository[author].get('commits', 0) + 1
+        if stamp_key not in self.changes_by_date_by_author :
+            self.changes_by_date_by_author[stamp_key] = {}
+        if author not in self.changes_by_date_by_author[stamp_key] :
+            self.changes_by_date_by_author[stamp_key][author] = {}
+        self.changes_by_date_by_author[stamp_key][author]['merge_commit'] = True
+        self.changes_by_date_by_author[stamp_key][author]['lines_added'] = 0
+        self.changes_by_date_by_author[stamp_key][author]['lines_removed'] = 0
         self.changes_by_date_by_author[stamp_key][author]['commits'] = \
             self._authors_of_repository[author]['commits']
 
