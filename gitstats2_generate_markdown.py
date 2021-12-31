@@ -67,7 +67,7 @@ class RMarkdownFile :
             self.git_statistics.get_last_commit_date().strftime(datetime_format)
         results['total_days'] = self.git_statistics.get_commit_delta_days()
         results['active_days'] = len(self.git_statistics.get_active_days())
-        perc_active_total = f"{(100.0*results['active_days']/results['total_days']):.2f}"
+        perc_active_total = f"{(results['active_days']/results['total_days']):.2%}"
         results['perc_active_total'] = perc_active_total
         results['total_files'] = self.git_statistics.get_total_files()
         results['total_lines'] = self.git_statistics.get_total_lines_of_code()
@@ -115,8 +115,8 @@ class RMarkdownFile :
         hour_of_day_table = []
         for i in range(0, 24) :
             commits = activity_by_hour_of_day.get(i, 0)
-            hour_of_day_table.append([commits, f"{(100*commits/total_commits):.2f}"])
-        _df = pd.DataFrame(hour_of_day_table, columns=['Commits', '%'])
+            hour_of_day_table.append([commits, f"{(commits/total_commits):.2%}"])
+        _df = pd.DataFrame(hour_of_day_table, columns=['Commits', 'Percentage'])
         df_transposed = _df.transpose()
         results['hour_of_day_table'] = \
             df_transposed.to_markdown(tablefmt="github", numalign="center")
@@ -127,7 +127,7 @@ class RMarkdownFile :
         total_commits = sum(data.Commits)
         # pylint: disable=E1136 disable=E1137
         data['Commits'] = \
-            data['Commits'].map(lambda el : f"{el} ({(100*el/total_commits):.2f}%)")
+            data['Commits'].map(lambda el : f"{el} ({(el/total_commits):.2%})")
         # pylint: disable=E1101
         data_transposed = data.transpose()
         results['day_of_week_table'] = \
@@ -145,7 +145,7 @@ class RMarkdownFile :
         data = pd.read_csv('month_of_year.csv', delimiter=', ', engine='python', index_col='Month')
         total_commits = sum(data.Commits)
         # pylint: disable=E1136 disable=E1137
-        data['Commits'] = data['Commits'].map(lambda el : f"{el} ({(100*el/total_commits):.2f}%)")
+        data['Commits'] = data['Commits'].map(lambda el : f"{el} ({(el/total_commits):.2%})")
         # pylint: disable=E1101
         data_transposed = data.transpose()
         results['month_of_year_table'] = \
@@ -172,7 +172,7 @@ class RMarkdownFile :
         table = []
         for year in sorted(commits_by_year.keys(), reverse=True) :
             commits = commits_by_year[year]
-            row = [year, f"{commits} ({(100*commits/total_commits):.2f}%)",
+            row = [year, f"{commits} ({(commits/total_commits):.2%})",
                    lines_added_by_year.get(year, 0), lines_removed_by_year.get(year, 0)]
             table.append(row)
         data = pd.DataFrame(
@@ -218,7 +218,7 @@ class RMarkdownFile :
             timedelta = last_commit - first_commit
             active_days = len(author_stats['active_days'])
             ranking = i
-            row = [author, f"{commits} ({(100*commits/total_commits):.2f}%)",
+            row = [author, f"{commits} ({(commits/total_commits):.2%})",
                    lines_added, lines_removed,
                    first_commit.strftime("%Y-%m-%d"), last_commit.strftime("%Y-%m-%d"),
                    timedelta, active_days, ranking]
@@ -250,7 +250,7 @@ class RMarkdownFile :
             # pylint: disable=C0301
             row = [
                 yymm, authors_by_commits[0],
-                f"{most_commits} ({(100*most_commits/commits_by_month):.2f}% of {commits_by_month})",
+                f"{most_commits} ({(most_commits/commits_by_month):.2%} of {commits_by_month})",
                 authors_top_rest, len(authors)]
             table.append(row)
         data = pd.DataFrame(
@@ -272,7 +272,7 @@ class RMarkdownFile :
             # pylint: disable=C0301
             row = [
                 year, authors_by_commits[0],
-                f"{most_commits} ({(100*most_commits/commits_by_year):.2f}% of {commits_by_year})",
+                f"{most_commits} ({(most_commits/commits_by_year):.2%} of {commits_by_year})",
                 authors_top_rest, len(authors)]
             table.append(row)
         data = pd.DataFrame(
@@ -284,7 +284,7 @@ class RMarkdownFile :
     def _fill_domains_table(self, results) :
         domains = self.git_statistics.get_domains_sorted_by_commits(reverse=True)
         total_commits = self.git_statistics.get_total_commits()
-        table = [ [domain, f"{info['commits']} ({(100*info['commits']/total_commits):.2f}%)"]
+        table = [ [domain, f"{info['commits']} ({(info['commits']/total_commits):.2%})"]
                   for domain, info in domains]
         data = pd.DataFrame(table, columns=['Domains', 'Total (%)'])
         results['domains_table'] = \
@@ -309,8 +309,8 @@ class RMarkdownFile :
             lines = extensions[extension]['lines']
             row = [
                 extension,
-                f"{files} ({(100*files/total_files):.2f}%)",
-                f"{lines} ({(100*lines/total_lines):.2f}%)",
+                f"{files} ({(files/total_files):.2%})",
+                f"{lines} ({(lines/total_lines):.2%})",
                 lines // files]
             table.append(row)
         data = pd.DataFrame(table, columns=['Extension', 'Files (%)', 'Lines (%)', 'Lines/file'])

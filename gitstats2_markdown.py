@@ -47,7 +47,7 @@ $start_date to $end_date
 
 #### Age:
 
-$total_days days, $active_days active days ($perc_active_total %)
+$total_days days, $active_days active days ($perc_active_total)
 
 #### Total files:
 

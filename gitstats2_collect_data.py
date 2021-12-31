@@ -1151,7 +1151,7 @@ Please see the manual page for more details.""")
     time_end = time.time()
     exectime_total = time_end - time_start
     print(f"Execution time {exectime_total:.5f} secs, {get_pipe_output.exectime_commands:.5f} secs \
-({(100.0*get_pipe_output.exectime_commands/exectime_total):.2f} %) in external commands")
+({(get_pipe_output.exectime_commands/exectime_total):.2%}) in external commands")
 
 if __name__ == '__main__' :
     main(sys.argv[1:])

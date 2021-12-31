@@ -101,7 +101,7 @@ Please see the manual page for more details.""")
     exectime_total = time_end - time_start
     exectime_commands = gitstats2_collect_data.get_pipe_output.exectime_commands
     print(f"Execution time {exectime_total:.5f} secs, {exectime_commands:.5f} secs \
-({(100.0*exectime_commands/exectime_total):.2f} %) in external commands")
+({(exectime_commands/exectime_total):.2%}) in external commands")
 
 if __name__ == '__main__' :
     main(sys.argv[1:])
