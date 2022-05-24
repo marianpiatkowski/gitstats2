@@ -51,26 +51,17 @@ def cwd_git() :
 
 def get_pipe_output(cmds, quiet=False) :
     start = time.time()
+    cmd = ' | '.join(cmds)
     if not quiet and os.isatty(1) :
-        print('>> ' + ' | '.join(cmds), end=' ')
+        print('>> ' + cmd, end=' ')
         sys.stdout.flush()
     process = subprocess.Popen(
-        cmds[0],
-        stdout = subprocess.PIPE,
-        shell = True,
-        encoding = 'utf8')
-    processes=[process]
-    for command in cmds[1:] :
-        process = subprocess.Popen(
-            command,
-            stdin = process.stdout,
-            stdout = subprocess.PIPE,
-            shell = True,
-            encoding = 'utf8')
-        processes.append(process)
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        shell=True,
+        encoding='utf8')
     output = process.communicate()[0]
-    for process in processes:
-        process.wait()
     end = time.time()
     if not quiet :
         if os.isatty(1) :
