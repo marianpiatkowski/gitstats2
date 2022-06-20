@@ -135,8 +135,13 @@ class RMarkdownFile :
 
     def _fill_hour_of_week_table(self, results) :
         activity_by_hour_of_week = self.git_statistics.get_activity_by_hour_of_week()
-        table = [ [activity_by_hour_of_week[weekday].get(hour, 0) for hour in range(0, 24)]
-                  for weekday in calendar.Calendar().iterweekdays()]
+        table = []
+        for weekday in calendar.Calendar().iterweekdays() :
+            if weekday in activity_by_hour_of_week :
+                table.append(
+                    [ activity_by_hour_of_week[weekday].get(hour, 0) for hour in range(0, 24)])
+            else :
+                table.append([0]*24)
         data = pd.DataFrame(table, index=calendar.day_abbr, columns=range(0, 24))
         results['hour_of_week_table'] = data.to_markdown(tablefmt="github", numalign="center")
 
@@ -338,9 +343,14 @@ class RMarkdownFile :
             tags_table.extend(self._fill_tags_table(repository, tags))
 
         results['total_tags'] = total_tags
-        avg_commits_per_tag = self.git_statistics.get_total_commits()/total_tags
+        avg_commits_per_tag = float(0.0)
+        if total_tags :
+            avg_commits_per_tag = self.git_statistics.get_total_commits()/total_tags
         results['avg_commits_per_tag'] = f"{avg_commits_per_tag:.2f}"
 
+        if not tags_table :
+            results['tags_table'] = ''
+            return
         _df = pd.DataFrame(tags_table, columns=["Repository", "Name", "Date", "Commits", "Authors"])
         results['tags_table'] = _df.to_markdown(index=False, tablefmt="github", numalign="center")
 
