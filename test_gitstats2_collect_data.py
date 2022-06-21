@@ -102,7 +102,7 @@ class GitStatisticsRevListTestCase(unittest.TestCase) :
              'start_date' : '',
              'processes' : 8
             },
-            ["/Users/tasmania/packages/ABAPInEmacs/"])
+            ["/Users/tasmania/packages/test-repos-gitstats2/ABAPInEmacs/"])
         self.time_start = 0.0
 
     def setUp(self) :
@@ -169,7 +169,7 @@ class GitStatisticsCollectTestCase(unittest.TestCase) :
         super().__init__(*args, **kwargs)
         self.git_statistics = GitStatisticsDataMock(
             {'max_ext_length' : 8},
-            ["/Users/tasmania/packages/ABAPInEmacs/"])
+            ["/Users/tasmania/packages/test-repos-gitstats2/ABAPInEmacs/"])
 
     def setUp(self) :
         self.time_start = time.time()
@@ -392,7 +392,7 @@ class RequireCWDGitTestCase(unittest.TestCase) :
 
     def test_cwd_git(self) :
         prev_dir = os.getcwd()
-        os.chdir("/Users/tasmania/packages/ABAPInEmacs")
+        os.chdir("/Users/tasmania/packages/test-repos-gitstats2/ABAPInEmacs")
         self.require_cwd_git()
         os.chdir(prev_dir)
 
