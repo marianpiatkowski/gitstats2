@@ -78,24 +78,20 @@ class ParallelTester :
 
 class GitStatisticsDataMock :
     def __init__(self, conf, gitpaths) :
-        self.configuration = conf.copy()
-        self._gitpaths = gitpaths
+        self.gitstatistics_base = gitstats2.GitStatisticsBase(
+            conf, gitpaths)
+        self.configuration = self.gitstatistics_base.configuration
 
     def get_gitpaths(self) :
-        return self._gitpaths
+        return self.gitstatistics_base.gitpaths
 
     def get_log_range(self, default_range='HEAD', end_only=True) :
-        commit_range = self.get_commit_range(default_range, end_only)
-        if self.configuration['start_date'] :
-            return f"--since=\"{self.configuration['start_date']}\" \"{commit_range}\""
-        return commit_range
+        return self.gitstatistics_base.get_log_range(
+            default_range=default_range, end_only=end_only)
 
     def get_commit_range(self, default_range='HEAD', end_only=True) :
-        if self.configuration['commit_end'] :
-            if end_only or not self.configuration['commit_begin'] :
-                return self.configuration['commit_end']
-            return f"{self.configuration['commit_begin']}..{self.configuration['commit_end']}"
-        return default_range
+        return self.gitstatistics_base.get_commit_range(
+            default_range=default_range, end_only=end_only)
 
 class GitStatisticsRevListTestCase(unittest.TestCase) :
     def __init__(self, *args, **kwargs) :
@@ -405,6 +401,26 @@ class RequireCWDGitTestCase(unittest.TestCase) :
         os.chdir("/Users/tasmania/packages/")
         with self.assertRaises(icontract.errors.ViolationError) :
             self.require_cwd_git()
+        os.chdir(prev_dir)
+
+class GitTopLevelAndPrefixTestCase(unittest.TestCase) :
+    def setUp(self) :
+        self.time_start = time.time()
+
+    def tearDown(self) :
+        time_end = time.time()
+        print(f"=== Execution time of {self.id()}, {(time_end-self.time_start):.3f}s")
+
+    def test_extract_toplevel_prefix(self) :
+        gitpath = os.path.dirname(os.path.abspath(__file__))
+        prev_dir = os.getcwd()
+        os.chdir(os.path.expanduser("~"))
+        top_level_path, subdir_path = \
+            gitstats2.GitStatisticsBase.decompose_gitpath(gitpath)
+        self.assertEqual(top_level_path, gitpath)
+        # prefix should be empty
+        self.assertFalse(subdir_path)
+        self.assertFalse(gitstats2.GitStatisticsBase.get_prefixed_path(subdir_path))
         os.chdir(prev_dir)
 
 if __name__ == '__main__' :

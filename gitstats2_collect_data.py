@@ -205,6 +205,20 @@ rev-parse --short {commit_range}"
     def get_git_version() :
         return get_pipe_output(['git --version'])
 
+    @staticmethod
+    def decompose_gitpath(gitpath) :
+        top_level_gitpath = get_pipe_output(
+            [f"git -C {gitpath} rev-parse --show-toplevel"], quiet=True)
+        subdir_gitpath = get_pipe_output(
+            [f"git -C {gitpath} rev-parse --show-prefix"], quiet=True)
+        return (top_level_gitpath, subdir_gitpath)
+
+    @staticmethod
+    def get_prefixed_path(subdir_path) :
+        if not subdir_path :
+            return ''
+        return f"-- {subdir_path}"
+
     def get_log_range(self, default_range='HEAD', end_only=True) :
         commit_range = self.get_commit_range(default_range, end_only)
         if self.configuration['start_date'] :
