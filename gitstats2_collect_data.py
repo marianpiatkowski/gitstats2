@@ -341,6 +341,8 @@ class LogShortStatData(GitStatisticsBase, LogShortStatParser) :
         self._changes_by_commit = self._get_modified_counts(line)
 
     def _collect_lines_modified(self, repository) :
+        prefix_path = repository.prefix_path
+        log_range = self.get_log_range('HEAD')
         self.current_state = ShortStatParserState.Initial
         self._process_in_state[
             ShortStatParserState.ChangesByCommit][
@@ -348,8 +350,7 @@ class LogShortStatData(GitStatisticsBase, LogShortStatParser) :
         extra = ''
         if self.configuration['linear_linestats'] :
             extra = '--first-parent -m'
-        cmd = f"git log --shortstat {extra} --pretty=format:\"%at %aN\" \
-{self.get_log_range('HEAD')}"
+        cmd = f"git log --shortstat {extra} --pretty=format:\"%at %aN\" {log_range} {prefix_path}"
         pipe_out = get_pipe_output([cmd])
         lines = pipe_out.split('\n')
         for line in reversed(lines) :
@@ -363,6 +364,8 @@ class LogShortStatData(GitStatisticsBase, LogShortStatParser) :
                 ShortStatParserState.CommitInfo] = self.do_nothing
 
     def _collect_lines_modified_by_author(self, repository) :
+        prefix_path = repository.prefix_path
+        log_range = self.get_log_range('@')
         self.current_state = ShortStatParserState.Initial
         self._process_in_state[
             ShortStatParserState.ChangesByCommit][
@@ -371,7 +374,7 @@ class LogShortStatData(GitStatisticsBase, LogShortStatParser) :
             ShortStatParserState.CommitInfo][
                 ShortStatParserState.CommitInfo] = self._update_merge_commit
         cmd = f"git log --shortstat --date-order --pretty=format:\"%at %aN\" \
-{self.get_log_range('@')}"
+{log_range} {prefix_path}"
         pipe_out = get_pipe_output([cmd])
         lines = pipe_out.split('\n')
         for line in reversed(lines) :
