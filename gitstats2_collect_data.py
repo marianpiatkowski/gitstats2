@@ -91,20 +91,20 @@ class GitStatisticsParallel :
         return (ext, int(pipe_out))
 
     @staticmethod
-    def file_tree_by_revlist(lines, processes, quiet=False) :
+    def file_tree_by_revlist(lines, prefix_path, processes, quiet=False) :
         with Pool(processes=processes) as pool :
             time_files_commit = pool.map(
                 partial(GitStatisticsParallel.add_time_files_commit,
-                        quiet=quiet),
+                        prefix_path=prefix_path, quiet=quiet),
                 lines)
             pool.terminate()
             pool.join()
         return time_files_commit
 
     @staticmethod
-    def add_time_files_commit(line, quiet) :
+    def add_time_files_commit(line, prefix_path, quiet) :
         timestamp, rev, commit_hash = line.split()
-        pipe_out = get_pipe_output([f"git ls-tree -r \"{rev}\""], quiet=quiet)
+        pipe_out = get_pipe_output([f"git ls-tree -r \"{rev}\" {prefix_path}"], quiet=quiet)
         file_tree = GitStatisticsParallel.file_tree_by_revision(pipe_out)
         return (timestamp, file_tree, commit_hash)
 
@@ -185,6 +185,7 @@ class ShortStatStateChangesByCommit :
                 raise LogShortStatParserError('Could not parse line: ', line) from value_error
 
 CommitChangesTuple = namedtuple('CommitChangesTuple', 'files inserted deleted')
+RepositoryTuple = namedtuple('RepositoryTuple', 'name prefix_path')
 
 class GitStatisticsBase :
     def __init__(self, conf, gitpaths) :
@@ -317,20 +318,24 @@ class LogShortStatData(GitStatisticsBase, LogShortStatParser) :
 
     def collect(self) :
         self.runstart_stamp = time.time()
-        repo_names = []
+        project_names = []
         for gitpath in self.gitpaths :
             print(f"Git path: {gitpath}")
             prev_dir = os.getcwd()
-            os.chdir(gitpath)
+            top_level_path, subdir_path = self.decompose_gitpath(gitpath)
+            os.chdir(top_level_path)
             print('Collecting data...')
             self._authors_of_repository = {}
-            repository = os.path.basename(os.path.abspath(gitpath))
-            repo_names.append(repository)
+            repo_name = os.path.basename(os.path.abspath(top_level_path))
+            project_name = repo_name + f"/{subdir_path}" if subdir_path else repo_name
+            project_names.append(project_name)
+            prefix_path = self.get_prefixed_path(subdir_path)
+            repository = RepositoryTuple(repo_name, prefix_path=prefix_path)
             self._collect_lines_modified(repository)
             self._collect_lines_modified_by_author(repository)
             os.chdir(prev_dir)
         if not self.configuration['project_name'] :
-            self.configuration['project_name'] = ', '.join(repo_names)
+            self.configuration['project_name'] = ', '.join(project_names)
 
     def _set_changes_by_commit(self, _, line) :
         self._changes_by_commit = self._get_modified_counts(line)
@@ -352,7 +357,7 @@ class LogShortStatData(GitStatisticsBase, LogShortStatParser) :
             # N files changed, N insertions (+), N deletions (-)
             # <stamp> <author>
             self.decide(line)
-            self.process_current_state(repository, line)
+            self.process_current_state(repository.name, line)
         self._process_in_state[
             ShortStatParserState.ChangesByCommit][
                 ShortStatParserState.CommitInfo] = self.do_nothing
@@ -371,7 +376,7 @@ class LogShortStatData(GitStatisticsBase, LogShortStatParser) :
         lines = pipe_out.split('\n')
         for line in reversed(lines) :
             self.decide(line)
-            self.process_current_state(repository, line)
+            self.process_current_state(repository.name, line)
         self._process_in_state[
             ShortStatParserState.ChangesByCommit][
                 ShortStatParserState.CommitInfo] = self.do_nothing
@@ -483,25 +488,30 @@ class GitTagsData(GitStatisticsBase) :
 
     def collect(self) :
         self.runstart_stamp = time.time()
-        repo_names = []
+        project_names = []
         for gitpath in self.gitpaths :
             print(f"Git path: {gitpath}")
             prev_dir = os.getcwd()
-            os.chdir(gitpath)
+            top_level_path, subdir_path = self.decompose_gitpath(gitpath)
+            os.chdir(top_level_path)
             print('Collecting data...')
             self._authors_of_repository = {}
-            repository = os.path.basename(os.path.abspath(gitpath))
-            repo_names.append(repository)
+            repo_name = os.path.basename(os.path.abspath(top_level_path))
+            project_name = repo_name + f"/{subdir_path}" if subdir_path else repo_name
+            project_names.append(project_name)
+            prefix_path = self.get_prefixed_path(subdir_path)
+            repository = RepositoryTuple(repo_name, prefix_path=prefix_path)
             self._collect_tags(repository)
             self._collect_tags_info(repository)
             os.chdir(prev_dir)
         if not self.configuration['project_name'] :
-            self.configuration['project_name'] = ', '.join(repo_names)
+            self.configuration['project_name'] = ', '.join(project_names)
 
     def _collect_tags(self, repository) :
-        self.tags[repository] = {}
-        tags = self.tags[repository]
-        lines = get_pipe_output(['git show-ref --tags']).split('\n')
+        self.tags[repository.name] = {}
+        tags = self.tags[repository.name]
+        prefix_path = repository.prefix_path
+        lines = get_pipe_output([f'git show-ref --tags {prefix_path}']).split('\n')
         for line in lines :
             if not line :
                 continue
@@ -521,7 +531,7 @@ class GitTagsData(GitStatisticsBase) :
                     'authors': {} }
 
     def _collect_tags_info(self, repository) :
-        tags = self.tags[repository]
+        tags = self.tags[repository.name]
         tags_list = [(tagdetail['date'], tagname) for tagname, tagdetail in tags.items()]
         tags_sorted_by_date_desc = [tagname for *_, tagname in sorted(tags_list,reverse=True)]
         prev = None
@@ -570,23 +580,29 @@ class GitFilesStatistics(GitStatisticsBase) :
 
     def collect(self) :
         self.runstart_stamp = time.time()
-        repo_names = []
+        project_names = []
         for gitpath in self.gitpaths :
             print(f"Git path: {gitpath}")
             prev_dir = os.getcwd()
-            os.chdir(gitpath)
+            top_level_path, subdir_path = self.decompose_gitpath(gitpath)
+            os.chdir(top_level_path)
             print('Collecting data...')
             self._authors_of_repository = {}
-            repository = os.path.basename(os.path.abspath(gitpath))
-            repo_names.append(repository)
+            repo_name = os.path.basename(os.path.abspath(top_level_path))
+            project_name = repo_name + f"/{subdir_path}" if subdir_path else repo_name
+            project_names.append(project_name)
+            prefix_path = self.get_prefixed_path(subdir_path)
+            repository = RepositoryTuple(repo_name, prefix_path=prefix_path)
             self._collect_files(repository)
             self._collect_revlist(repository)
             os.chdir(prev_dir)
         if not self.configuration['project_name'] :
-            self.configuration['project_name'] = ', '.join(repo_names)
+            self.configuration['project_name'] = ', '.join(project_names)
 
-    def _collect_files(self, _repository) :
-        cmd = f"git ls-tree -r -l {self.get_commit_range('HEAD', end_only=True)}"
+    def _collect_files(self, repository) :
+        commit_range = self.get_commit_range('HEAD', end_only=True)
+        prefix_path = repository.prefix_path
+        cmd = f"git ls-tree -r -l {commit_range} {prefix_path}"
         pipe_out = get_pipe_output([cmd])
         lines = pipe_out.split('\n')
         ext_blob = [el for el in map(self._add_ext_blob, lines) if el is not None]
@@ -624,17 +640,19 @@ class GitFilesStatistics(GitStatisticsBase) :
             self.extensions[ext]['lines'] += lines
 
     def _collect_revlist(self, repository) :
-        cmd = f"git rev-list --pretty=format:\"%at %T %H\" {self.get_log_range('HEAD')}"
+        log_range = self.get_log_range('HEAD')
+        prefix_path = repository.prefix_path
+        cmd = f"git rev-list --pretty=format:\"%at %T %H\" {log_range} {prefix_path}"
         pipe_out = get_pipe_output([cmd, 'grep -v ^commit'])
         lines = pipe_out.strip().split('\n')
         # Outputs "<stamp> <revlist> <commit hash>"
         lines.reverse()
         time_files_commit = GitStatisticsParallel.file_tree_by_revlist(
-            lines, self.configuration['processes'])
-        self._update_files_by_stamp(repository, time_files_commit)
+            lines, prefix_path, self.configuration['processes'])
+        self._update_files_by_stamp(repository.name, time_files_commit)
         if self.configuration['lines_by_date'] :
             lines_by_authors_by_stamp = self._lines_by_authors_by_stamp(time_files_commit)
-            self._update_lines_by_date_by_author(repository, lines_by_authors_by_stamp)
+            self._update_lines_by_date_by_author(repository.name, lines_by_authors_by_stamp)
 
     def _update_files_by_stamp(self, repository, time_files_commit) :
         prev_num_files = 0
@@ -750,23 +768,29 @@ class GitContributionActivity(GitStatisticsBase) :
 
     def collect(self) :
         self.runstart_stamp = time.time()
-        repo_names = []
+        project_names = []
         for gitpath in self.gitpaths :
             print(f"Git path: {gitpath}")
             prev_dir = os.getcwd()
-            os.chdir(gitpath)
+            top_level_path, subdir_path = self.decompose_gitpath(gitpath)
+            os.chdir(top_level_path)
             print('Collecting data...')
             self._authors_of_repository = {}
-            repository = os.path.basename(os.path.abspath(gitpath))
-            repo_names.append(repository)
+            repo_name = os.path.basename(os.path.abspath(top_level_path))
+            project_name = repo_name + f"/{subdir_path}" if subdir_path else repo_name
+            project_names.append(project_name)
+            prefix_path = self.get_prefixed_path(subdir_path)
+            repository = RepositoryTuple(repo_name, prefix_path=prefix_path)
             self._collect_commits_graph(repository)
             os.chdir(prev_dir)
         if not self.configuration['project_name'] :
-            self.configuration['project_name'] = ', '.join(repo_names)
+            self.configuration['project_name'] = ', '.join(project_names)
 
-    def _collect_commits_graph(self, _repository) :
+    def _collect_commits_graph(self, repository) :
+        log_range = self.get_log_range('HEAD')
+        prefix_path = repository.prefix_path
         # Outputs "<stamp> <date> <time> <timezone> <author> '<' <mail> '>'"
-        cmd = f"git rev-list --pretty=format:\"%at %ai %aN <%aE>\" {self.get_log_range('HEAD')}"
+        cmd = f"git rev-list --pretty=format:\"%at %ai %aN <%aE>\" {log_range} {prefix_path}"
         pipe_out = get_pipe_output([cmd, 'grep -v ^commit'])
         lines = pipe_out.split('\n')
         self.total_commits += len(lines)
@@ -903,15 +927,19 @@ class GitStatisticsData(LogShortStatData,
 
     def collect(self) :
         self.runstart_stamp = time.time()
-        repo_names = []
+        project_names = []
         for gitpath in self.gitpaths :
             print(f"Git path: {gitpath}")
             prev_dir = os.getcwd()
-            os.chdir(gitpath)
+            top_level_path, subdir_path = self.decompose_gitpath(gitpath)
+            os.chdir(top_level_path)
             print('Collecting data...')
             self._authors_of_repository = {}
-            repository = os.path.basename(os.path.abspath(gitpath))
-            repo_names.append(repository)
+            repo_name = os.path.basename(os.path.abspath(top_level_path))
+            project_name = repo_name + f"/{subdir_path}" if subdir_path else repo_name
+            project_names.append(project_name)
+            prefix_path = self.get_prefixed_path(subdir_path)
+            repository = RepositoryTuple(repo_name, prefix_path=prefix_path)
             self._collect_authors(repository)
             self._collect_tags(repository)
             self._collect_tags_info(repository)
@@ -923,10 +951,12 @@ class GitStatisticsData(LogShortStatData,
             self._update_and_accumulate_authors_stats()
             os.chdir(prev_dir)
         if not self.configuration['project_name'] :
-            self.configuration['project_name'] = ', '.join(repo_names)
+            self.configuration['project_name'] = ', '.join(project_names)
 
-    def _collect_authors(self, _repository) :
-        cmd = f"git shortlog -s {self.get_log_range()}"
+    def _collect_authors(self, repository) :
+        log_range = self.get_log_range()
+        prefix_path = repository.prefix_path
+        cmd = f"git shortlog -s {log_range} {prefix_path}"
         pipe_out = get_pipe_output([cmd, 'cut -c8-'])
         lines = pipe_out.split('\n')
         self.total_authors.update(lines)
