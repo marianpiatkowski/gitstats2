@@ -139,7 +139,8 @@ class GitStatisticsGraphs :
 
     @staticmethod
     def plot_commits_by_author() :
-        data = pd.read_csv('commits_by_author.csv', delimiter=', ', engine='python')
+        sep = GitStatisticsGraphs._get_separator_for_file('commits_by_author.csv')
+        data = pd.read_csv('commits_by_author.csv', delimiter=sep, engine='python')
         plot_data = data.apply(lambda x : [datetime.datetime.fromtimestamp(elem) for elem in x]
                                if x.name == 'Stamp' else x)
         plt.figure(figsize=(16.0, 6.0))
@@ -154,7 +155,8 @@ class GitStatisticsGraphs :
 
     @staticmethod
     def plot_lines_of_code_added_by_author() :
-        data = pd.read_csv('lines_of_code_added_by_author.csv', delimiter=', ', engine='python')
+        sep = GitStatisticsGraphs._get_separator_for_file('lines_of_code_added_by_author.csv')
+        data = pd.read_csv('lines_of_code_added_by_author.csv', delimiter=sep, engine='python')
         plot_data = data.apply(lambda x : [datetime.datetime.fromtimestamp(elem) for elem in x]
                                if x.name == 'Stamp' else x)
         plt.figure(figsize=(16.0, 6.0))
@@ -209,3 +211,12 @@ class GitStatisticsGraphs :
         plt.tight_layout()
         plt.savefig("lines_of_code.png")
         plt.close()
+
+    @staticmethod
+    def _get_separator_for_file(filename : str) :
+        sep = ', '
+        with open(filename, 'r', encoding='utf-8') as inputfile :
+            first_line = inputfile.readline()
+            if first_line.find(' | ') != -1 :
+                sep = ' | '
+        return sep

@@ -1043,27 +1043,30 @@ class GitStatisticsWriter :
         commits_by_authors = {}
         limit = self.git_statistics.configuration['max_authors']
         authors_to_write = self.git_statistics.get_authors(limit)
+        separator = ', '
+        if any(map(lambda author : author.find(',') != -1, authors_to_write)) :
+            separator = ' | '
         for author in authors_to_write :
             lines_added_by_authors[author] = 0
             commits_by_authors[author] = 0
         with open('lines_of_code_added_by_author.csv', 'w', encoding='utf-8') as outputfile1, \
              open('commits_by_author.csv', 'w', encoding='utf-8') as outputfile2 :
             changes_by_date_by_author = self.git_statistics.get_changes_by_date_by_author()
-            outputfile1.write('Stamp, ' + ', '.join(authors_to_write) + '\n')
-            outputfile2.write('Stamp, ' + ', '.join(authors_to_write) + '\n')
+            outputfile1.write('Stamp' + separator + separator.join(authors_to_write) + '\n')
+            outputfile2.write('Stamp' + separator + separator.join(authors_to_write) + '\n')
             for stamp_key in sorted(changes_by_date_by_author.keys()) :
                 # structure of stamp_key
                 # stamp repository
                 stamp = stamp_key.split()[0]
-                outputfile1.write(f"{stamp}, ")
-                outputfile2.write(f"{stamp}, ")
+                outputfile1.write(f"{stamp}{separator}")
+                outputfile2.write(f"{stamp}{separator}")
                 for author in set(changes_by_date_by_author[stamp_key].keys()).intersection(
                         authors_to_write) :
                     lines_added_by_authors[author] += \
                         changes_by_date_by_author[stamp_key][author]['lines_added']
                     commits_by_authors[author] += 1
-                outputfile1.write(', '.join(map(str, lines_added_by_authors.values())))
-                outputfile2.write(', '.join(map(str, commits_by_authors.values())))
+                outputfile1.write(separator.join(map(str, lines_added_by_authors.values())))
+                outputfile2.write(separator.join(map(str, commits_by_authors.values())))
                 outputfile1.write('\n')
                 outputfile2.write('\n')
 
