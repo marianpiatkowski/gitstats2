@@ -282,7 +282,7 @@ class RMarkdownFile :
             table.append(row)
         data = pd.DataFrame(
             table,
-            columns=['Month', 'Author', 'Commits (%)', f"Next top {limit}", "Number of authors"])
+            columns=['Year', 'Author', 'Commits (%)', f"Next top {limit}", "Number of authors"])
         results['author_of_year_table'] = \
             data.to_markdown(index=False, tablefmt="github", numalign="center")
 

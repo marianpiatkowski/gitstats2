@@ -218,5 +218,5 @@ class GitStatisticsGraphs :
         with open(filename, 'r', encoding='utf-8') as inputfile :
             first_line = inputfile.readline()
             if first_line.find(' | ') != -1 :
-                sep = ' | '
+                sep = ' \| '
         return sep
